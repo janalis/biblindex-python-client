@@ -149,6 +149,58 @@ client = BiblIndexClient(
 quotations = client.request("/api/quotations", {"page": 1})
 ```
 
+### Lazy fetching
+
+API responses are automatically wrapped in lazy proxies that defer network requests until data is actually read:
+
+- **`LazyResource`** (`MutableMapping`): resource links (e.g. `/api/extracts/42`, `{"@id": "/api/works/1"}`) embedded in responses are wrapped as lazy mappings — the linked resource is fetched only when a field is accessed.
+- **`LazyCollection`** (`MutableSequence`): paginated Hydra collections (`hydra:member`) are wrapped as lazy sequences — subsequent pages are fetched on demand when iterating or indexing beyond the current page.
+
+Caching ensures the same API resource is never fetched twice within a single response tree.
+
+```python
+from biblindex_client import BiblIndexClient, LazyCollection, LazyResource
+
+client = BiblIndexClient(...)
+quotations = client.request("/api/quotations", {"page": 1})
+
+# hydra:member is a LazyCollection — pages fetched lazily
+members = quotations["hydra:member"]
+first = members[0]           # no network call yet
+print(first["number"])       # triggers fetch of /api/quotations/1229419
+```
+
+#### Using `application/json` (plain JSON)
+
+> **Warning:** Prefer `application/ld+json` (the default) whenever the API supports it. The Hydra JSON-LD format provides metadata (`hydra:totalItems`, `hydra:view`) that enables accurate `len()` and proper next-page resolution via `hydra:next` links. With plain `application/json`, total item count is unavailable and pagination falls back to incrementing `?page=N`, which may yield empty pages at the end.
+
+When the API returns plain JSON arrays instead of Hydra collections, configure the `accept` media type:
+
+```python
+from biblindex_client import BiblIndexClient, LazyCollection, LazyResource
+
+client = BiblIndexClient(
+    baseUrl="https://www.biblindex.org",
+    username="...",
+    password="...",
+    clientId="...",
+    clientSecret="...",
+    accept="application/json",
+)
+
+quotations = client.request("/api/quotations", {"page": 1})
+
+# The array is wrapped in a LazyCollection — pages are fetched lazily
+print(type(quotations))           # <class 'LazyCollection'>
+print(quotations.loadedItems)     # items loaded so far (page 1)
+
+# Accessing beyond the current page triggers ?page=N
+item = quotations[2]              # fetches /api/quotations?page=2
+print(item["id"])                 # reads from the fetched item
+```
+
+Pagination uses the `?page=N` query parameter automatically — each fetch increments the page number. If the API returns an empty array the collection stops fetching further pages.
+
 ## Publishing a new version
 
 ```bash
