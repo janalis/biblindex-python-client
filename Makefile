@@ -111,5 +111,5 @@ bump-major:
 
 # Usage: make release part=patch|minor|major
 release: bump-$(part)
-	@echo "Release v$$(uv run bump-my-version show | uv run python -c "import sys,json; d=json.load(sys.stdin); print(d['current_version'])") ready"
+	@echo "Release v$$(uv run bump-my-version show --format json | uv run python -c "import sys,json; d=json.load(sys.stdin); print(d['current_version'])") ready"
 	@echo "Tag & commit pushed. The GitHub Release workflow will build and publish."
