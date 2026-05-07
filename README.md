@@ -73,13 +73,17 @@ uv run python src/example.py
 
 ## Available commands
 
-| Command       | Description                                  |
-|---------------|----------------------------------------------|
-| make setup    | Install everything                           |
-| make run      | Run the application                          |
-| make test     | Run the test suite with coverage report      |
-| make lint     | Run ruff check, format check, and mypy       |
-| make lint-fix | Auto-fix lint issues and reformat the code   |
+| Command            | Description                                  |
+|--------------------|----------------------------------------------|
+| make setup         | Install everything                           |
+| make run           | Run the application                          |
+| make test          | Run the test suite with coverage report      |
+| make lint          | Run ruff check, format check, and mypy       |
+| make lint-fix      | Auto-fix lint issues and reformat the code   |
+| make bump-patch    | Bump patch version (0.1.0 → 0.1.1)          |
+| make bump-minor    | Bump minor version (0.1.0 → 0.2.0)          |
+| make bump-major    | Bump major version (0.1.0 → 1.0.0)          |
+| make release       | Bump and tag (usage: `make release part=patch`) |
 
 ## Platform Support
 
@@ -152,9 +156,13 @@ quotations = client.request("/api/quotations", {"page": 1})
 
 ## Publishing a new version
 
-1. Bump `version` in `pyproject.toml`.
-2. Tag the release: `git tag v0.1.1 && git push --tags`.
-3. Consumers pin the new tag in their `git+` URL.
+```bash
+make bump-patch   # or bump-minor / bump-major
+```
+
+This bumps the version in `pyproject.toml`, commits, tags (`vX.Y.Z`), and pushes to GitHub. The [Release workflow](.github/workflows/release.yml) then builds the distribution and creates a GitHub Release with auto-generated release notes.
+
+Consumers pin the new tag in their `git+` URL.
 
 If you ever want to publish to a real index (PyPI, private registry):
 

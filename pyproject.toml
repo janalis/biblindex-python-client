@@ -50,6 +50,9 @@ typecheck = [
     "mypy>=1.10",
     "types-requests>=2.32",
 ]
+release = [
+    "bump-my-version>=0.28",
+]
 
 [build-system]
 requires = ["uv_build>=0.8,<0.9"]
@@ -116,3 +119,15 @@ files = ["src/biblindex_client"]
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unreachable = true
+
+[tool.bumpversion]
+current_version = "0.1.0"
+commit = true
+tag = true
+push = true
+allow_dirty = false
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
