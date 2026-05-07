@@ -131,3 +131,10 @@ allow_dirty = false
 filename = "pyproject.toml"
 search = 'version = "{current_version}"'
 replace = 'version = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "uv.lock"
+search = '''name = "biblindex-client"
+version = "{current_version}"'''
+replace = '''name = "biblindex-client"
+version = "{new_version}"'''
