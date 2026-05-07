@@ -62,6 +62,7 @@ Edit .env.local with your configuration.
 ### Using Make (recommended)
 
 ```bash
+make help      # List all available commands
 make run
 ```
 
@@ -73,17 +74,11 @@ uv run python src/example.py
 
 ## Available commands
 
-| Command            | Description                                  |
-|--------------------|----------------------------------------------|
-| make setup         | Install everything                           |
-| make run           | Run the application                          |
-| make test          | Run the test suite with coverage report      |
-| make lint          | Run ruff check, format check, and mypy       |
-| make lint-fix      | Auto-fix lint issues and reformat the code   |
-| make bump-patch    | Bump patch version (0.1.0 → 0.1.1)          |
-| make bump-minor    | Bump minor version (0.1.0 → 0.2.0)          |
-| make bump-major    | Bump major version (0.1.0 → 1.0.0)          |
-| make release       | Bump and tag (usage: `make release part=patch`) |
+Run `make help` to see all available commands with descriptions:
+
+```bash
+make help
+```
 
 ## Platform Support
 
