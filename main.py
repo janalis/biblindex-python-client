@@ -1,17 +1,17 @@
 import os
 
-from dotenv import load_dotenv
+from dotenv_flow import dotenv_flow
 from service.biblindex import BiblIndexClient
 
-# Press the green button in the gutter to run the script.
+dotenv_flow("local")
+
 if __name__ == '__main__':
-    load_dotenv()
     client = BiblIndexClient(
-        os.environ["BIBLINDEX_API_URL"],
-        os.environ["BIBLINDEX_API_USER"],
-        os.environ["BIBLINDEX_API_PASSWORD"],
-        os.environ["BIBLINDEX_API_KEY"],
-        os.environ["BIBLINDEX_API_SECRET"]
+        os.getenv("BIBLINDEX_API_URL"),
+        os.getenv("BIBLINDEX_API_USER"),
+        os.getenv("BIBLINDEX_API_PASSWORD"),
+        os.getenv("BIBLINDEX_API_KEY"),
+        os.getenv("BIBLINDEX_API_SECRET")
     )
     print(client.request("/api/quotations", {
         "page": 1,
