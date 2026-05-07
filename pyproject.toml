@@ -1,8 +1,45 @@
 [project]
 name = "biblindex-client"
 version = "0.1.0"
+description = "Python client for the BiblIndex API."
+readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-    "dotenv-flow",
-    "requests",
+license = { text = "MIT" }
+authors = [
+    { name = "Pierre Hennequart", email = "pierre@janalis.com" },
 ]
+keywords = ["biblindex", "api", "client", "oauth2"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "requests>=2.32",
+]
+
+[project.urls]
+Homepage = "https://www.biblindex.org/api"
+Source = "https://github.com/janalis/biblindex-client"
+Issues = "https://github.com/janalis/biblindex-client/issues"
+
+[dependency-groups]
+# Used only by the example main.py runner — not shipped to library consumers.
+dev = [
+    "dotenv-flow",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.9"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "biblindex_client"
+module-root = ""

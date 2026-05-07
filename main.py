@@ -1,7 +1,7 @@
 import os
 
 from dotenv_flow import dotenv_flow
-from service.biblindex import BiblIndexClient
+from biblindex_client import BiblIndexClient
 
 dotenv_flow("local")
 

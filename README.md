@@ -100,6 +100,67 @@ For the smoothest experience:
 * macOS / Linux → native terminal
 * Windows → WSL2 (recommended)
 
+## Use as a library in another project
+
+The package is published directly from this Git repository — no PyPI account
+needed. Consumers install it by adding the Git URL to their own project.
+
+### With `uv`
+
+```bash
+uv add "biblindex-client @ git+https://github.com/janalis/biblindex-client.git"
+```
+
+To pin a specific tag, branch or commit:
+
+```bash
+uv add "biblindex-client @ git+https://github.com/janalis/biblindex-client.git@v0.1.0"
+```
+
+### With `pip`
+
+```bash
+pip install "biblindex-client @ git+https://github.com/janalis/biblindex-client.git"
+```
+
+### Or in `pyproject.toml`
+
+```toml
+[project]
+dependencies = [
+    "biblindex-client @ git+https://github.com/janalis/biblindex-client.git@v0.1.0",
+]
+```
+
+### Usage
+
+```python
+from biblindex_client import BiblIndexClient
+
+client = BiblIndexClient(
+    baseUrl="https://www.biblindex.org",
+    username="...",
+    password="...",
+    clientId="...",
+    clientSecret="...",
+)
+
+quotations = client.request("/api/quotations", {"page": 1})
+```
+
+## Publishing a new version
+
+1. Bump `version` in `pyproject.toml`.
+2. Tag the release: `git tag v0.1.1 && git push --tags`.
+3. Consumers pin the new tag in their `git+` URL.
+
+If you ever want to publish to a real index (PyPI, private registry):
+
+```bash
+uv build         # produces dist/*.whl and dist/*.tar.gz
+uv publish       # upload (configure credentials via UV_PUBLISH_TOKEN or ~/.pypirc)
+```
+
 ## Contributing
 
 This project is open to contributions.
