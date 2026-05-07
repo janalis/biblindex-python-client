@@ -34,7 +34,17 @@ jobs:
         run: uv sync --group test --python ${{ matrix.python-version }}
 
       - name: Run pytest with coverage
-        run: uv run --python ${{ matrix.python-version }} pytest --cov=biblindex_client --cov-report=term-missing --cov-report=xml
+        run: uv run --python ${{ matrix.python-version }} pytest --cov=biblindex_client --cov-report=term-missing --cov-report=xml --junit-xml=test-results.xml
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v3
+        if: ${{ !cancelled() }}
+        with:
+          name: Test Results (${{ matrix.python-version }})
+          path: test-results.xml
+          reporter: python-xunit
+          fail-on-error: false
+          only-summary: true
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
