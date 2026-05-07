@@ -80,7 +80,7 @@ jobs:
         run: uv sync --group typecheck
 
       - name: mypy
-        run: uv run mypy src/biblindex_client
+        run: uv run mypy
 
   build:
     name: Build distribution

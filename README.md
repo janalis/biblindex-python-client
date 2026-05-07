@@ -80,7 +80,7 @@ uv run python src/example.py
 | make setup    | Install everything                           |
 | make run      | Run the application                          |
 | make test     | Run the test suite with coverage report      |
-| make lint     | Run ruff check and format check              |
+| make lint     | Run ruff check, format check, and mypy       |
 | make lint-fix | Auto-fix lint issues and reformat the code   |
 
 ## Platform Support

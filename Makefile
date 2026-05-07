@@ -33,9 +33,10 @@ lint:
 	@if $(CHECK_CMD) pyenv >$(NULL) 2>&1; then \
 		pyenv local $(PYTHON_VERSION); \
 	fi
-	@uv sync --group lint
+	@uv sync --group lint --group typecheck
 	@uv run ruff check .
 	@uv run ruff format --check .
+	@uv run mypy
 
 lint-fix:
 	@if $(CHECK_CMD) pyenv >$(NULL) 2>&1; then \
