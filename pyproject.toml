@@ -1,6 +1,6 @@
 [project]
 name = "biblindex-client"
-version = "0.1.5"
+version = "0.2.0"
 description = "Python client for the BiblIndex API."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -120,7 +120,7 @@ warn_redundant_casts = true
 warn_unreachable = true
 
 [tool.bumpversion]
-current_version = "0.1.5"
+current_version = "0.2.0"
 commit = true
 tag = true
 allow_dirty = false
