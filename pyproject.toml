@@ -124,7 +124,6 @@ warn_unreachable = true
 current_version = "0.1.4"
 commit = true
 tag = true
-push = true
 allow_dirty = false
 
 [[tool.bumpversion.files]]

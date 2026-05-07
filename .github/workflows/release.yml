@@ -49,7 +49,7 @@ jobs:
 
       - name: Bump version
         if: github.event_name == 'workflow_dispatch'
-        run: uv run bump-my-version bump ${{ inputs.part }} --no-push
+        run: uv run bump-my-version bump ${{ inputs.part }}
 
       - name: Push changes
         if: github.event_name == 'workflow_dispatch'
