@@ -154,20 +154,21 @@ quotations = client.request("/api/quotations", {"page": 1})
 API responses are automatically wrapped in lazy proxies that defer network requests until data is actually read:
 
 - **`LazyResource`** (`MutableMapping`): resource links (e.g. `/api/extracts/42`, `{"@id": "/api/works/1"}`) embedded in responses are wrapped as lazy mappings — the linked resource is fetched only when a field is accessed.
-- **`LazyCollection`** (`MutableSequence`): paginated Hydra collections (`hydra:member`) are wrapped as lazy sequences — subsequent pages are fetched on demand when iterating or indexing beyond the current page.
+- **`LazyCollection`** (`MutableSequence`): paginated Hydra collections and plain JSON arrays are wrapped as lazy sequences — subsequent pages are fetched on demand when iterating or indexing beyond the current page.
+
+Hydra metadata properties (`hydra:member`, `hydra:view`, `hydra:search`, `hydra:totalItems`) are not exposed through the lazy wrappers — collections are returned directly as `LazyCollection` instances.
 
 Caching ensures the same API resource is never fetched twice within a single response tree.
 
 ```python
-from biblindex_client import BiblIndexClient, LazyCollection, LazyResource
+from biblindex_client import BiblIndexClient, LazyResource
 
 client = BiblIndexClient(...)
-quotations = client.request("/api/quotations", {"page": 1})
+collection = client.request("/api/quotations", {"page": 1})
 
-# hydra:member is a LazyCollection — pages fetched lazily
-members = quotations["hydra:member"]
-first = members[0]           # no network call yet
-print(first["number"])       # triggers fetch of /api/quotations/1229419
+# members is a LazyCollection — pages fetched lazily
+item = collection[0]           # no network call yet
+print(item["@id"])       # triggers fetch of /api/quotations/1229419
 ```
 
 #### Using `application/json` (plain JSON)
@@ -188,14 +189,14 @@ client = BiblIndexClient(
     accept="application/json",
 )
 
-quotations = client.request("/api/quotations", {"page": 1})
+collection = client.request("/api/quotations", {"page": 1})
 
 # The array is wrapped in a LazyCollection — pages are fetched lazily
-print(type(quotations))           # <class 'LazyCollection'>
-print(quotations.loadedItems)     # items loaded so far (page 1)
+print(type(collection))           # <class 'LazyCollection'>
+print(collection.loadedItems)     # items loaded so far (page 1)
 
 # Accessing beyond the current page triggers ?page=N
-item = quotations[2]              # fetches /api/quotations?page=2
+item = collection[2]              # fetches /api/quotations?page=2
 print(item["id"])                 # reads from the fetched item
 ```
 

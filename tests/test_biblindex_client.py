@@ -284,9 +284,9 @@ def test_request_lazy_fetches_collection_members_from_response_links(
 
     result = client.request(RESOURCE_PATH, {})
 
-    assert isinstance(result["hydra:member"], LazyCollection)
-    firstMember = result["hydra:member"][0]
-    secondMember = result["hydra:member"][1]
+    assert isinstance(result, LazyCollection)
+    firstMember = result[0]
+    secondMember = result[1]
     assert isinstance(firstMember, LazyResource)
     assert isinstance(secondMember, LazyResource)
     assert len(responses.calls) == 1
@@ -337,15 +337,14 @@ def test_request_lazy_fetches_collection_pages_when_accessing_later_items(
     )
 
     result = client.request(RESOURCE_PATH, {})
-    members = result["hydra:member"]
 
-    assert isinstance(members, LazyCollection)
-    assert len(members) == 2
-    assert members.loadedItems == 1
+    assert isinstance(result, LazyCollection)
+    assert len(result) == 2
+    assert result.loadedItems == 1
     assert len(responses.calls) == 1
 
-    assert members[1]["@id"] == "/api/quotations/1229420"
-    assert members.loadedItems == 2
+    assert result[1]["@id"] == "/api/quotations/1229420"
+    assert result.loadedItems == 2
     assert len(responses.calls) == 2
     assert responses.calls[1].request.url == f"{RESOURCE_URL}?page=2"
 
@@ -583,3 +582,13 @@ def test_client_wrapping_helpers_cover_reference_branches(client: BiblIndexClien
         cache=cache,
     )
     assert wrappedNestedSelfReference == {"place": {"@id": "/api/things/1", "name": "Current"}}
+
+
+def test_wrap_linked_resource_properties_skips_hydra_keys(client: BiblIndexClient) -> None:
+    wrapped = client._wrapLinkedResourceProperties(
+        {"hydra:view": {"@id": "/api/things?page=1"}, "title": "foo"},
+        currentResource="/api/things",
+        cache={},
+    )
+    assert "hydra:view" not in wrapped
+    assert wrapped["title"] == "foo"

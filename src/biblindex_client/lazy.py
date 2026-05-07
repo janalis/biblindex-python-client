@@ -22,6 +22,16 @@ class ResourceClient(Protocol):
     def _nextPageResource(self, data: Mapping[str, Any]) -> str | None: ...
 
 
+_HYDRA_KEYS = frozenset(
+    {
+        "hydra:member",
+        "hydra:view",
+        "hydra:search",
+        "hydra:totalItems",
+    }
+)
+
+
 class LazyResource(MutableMapping[str, Any]):
     """Mapping proxy that fetches an API resource when its data is read."""
 
@@ -65,22 +75,32 @@ class LazyResource(MutableMapping[str, Any]):
         return self._data
 
     def __getitem__(self, key: str) -> Any:
+        if key in _HYDRA_KEYS:
+            raise KeyError(key)
+
         if self._data is None and key in {"@id", "@type", "id"} and key in self._seed:
             return self._seed[key]
 
         return self._load()[key]
 
     def __setitem__(self, key: str, value: Any) -> None:
+        if key in _HYDRA_KEYS:
+            raise KeyError(key)
         self._load()[key] = value
 
     def __delitem__(self, key: str) -> None:
+        if key in _HYDRA_KEYS:
+            raise KeyError(key)
         del self._load()[key]
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._load())
+        for key in self._load():
+            if key not in _HYDRA_KEYS:
+                yield key
 
     def __len__(self) -> int:
-        return len(self._load())
+        data = self._load()
+        return len(data) - len(_HYDRA_KEYS & data.keys())
 
     def __repr__(self) -> str:
         if self._data is None:

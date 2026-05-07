@@ -151,6 +151,26 @@ class BiblIndexClient:
             return wrappedItems
 
         if isinstance(data, dict):
+            hydraMember = data.get("hydra:member")
+            if isinstance(hydraMember, list):
+                wrappedMembers = self._wrapLinkedResources(
+                    hydraMember,
+                    currentResource=currentResource,
+                    cache=cache,
+                )
+                return LazyCollection(
+                    self,
+                    wrappedMembers,
+                    currentResource=currentResource,
+                    nextResource=self._nextPageResource(data),
+                    totalItems=(
+                        data["hydra:totalItems"]
+                        if isinstance(data.get("hydra:totalItems"), int)
+                        else None
+                    ),
+                    cache=cache,
+                )
+
             return self._wrapLinkedResourceProperties(
                 data,
                 currentResource=currentResource,
@@ -176,27 +196,11 @@ class BiblIndexClient:
         """Wrap resource links in a mapping without replacing its metadata."""
         wrapped: dict[str, Any] = {}
         for key, value in data.items():
-            if key in {"@id", "@type", "@context", "hydra:view", "hydra:search"}:
+            if key in {"@id", "@type"}:
                 wrapped[key] = value
                 continue
 
-            if key == "hydra:member" and isinstance(value, list):
-                wrapped[key] = LazyCollection(
-                    self,
-                    self._wrapLinkedResources(
-                        value,
-                        currentResource=currentResource,
-                        cache=cache,
-                    ),
-                    currentResource=currentResource,
-                    nextResource=self._nextPageResource(data),
-                    totalItems=(
-                        data["hydra:totalItems"]
-                        if isinstance(data.get("hydra:totalItems"), int)
-                        else None
-                    ),
-                    cache=cache,
-                )
+            if key in {"hydra:member", "hydra:view", "hydra:search", "hydra:totalItems"}:
                 continue
 
             resource = self._linkedResource(value)

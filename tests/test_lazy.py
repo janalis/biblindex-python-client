@@ -195,3 +195,32 @@ def test_lazy_collection_stops_on_scalar_next_page(client: BiblIndexClient) -> N
     )
 
     assert list(collection) == [1]
+
+
+def test_lazy_resource_blocks_hydra_keys(client: BiblIndexClient) -> None:
+    resource = LazyResource(client, "/api/extracts/42", {})
+    resource._data = {
+        "@id": "/api/extracts/42",
+        "@type": "Extract",
+        "@context": "/api/contexts/Extract",
+        "title": "Extract 42",
+        "hydra:view": {"@id": "/api/extracts/42"},
+        "hydra:totalItems": 1,
+    }
+
+    with pytest.raises(KeyError):
+        resource["hydra:view"]
+    with pytest.raises(KeyError):
+        resource["hydra:totalItems"] = 2
+    with pytest.raises(KeyError):
+        del resource["hydra:view"]
+
+    keys = list(resource)
+    assert "hydra:view" not in keys
+    assert "hydra:totalItems" not in keys
+    assert "@id" in keys
+    assert "@type" in keys
+    assert "@context" in keys
+    assert "title" in keys
+
+    assert len(resource) == 4
