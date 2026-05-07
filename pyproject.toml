@@ -31,9 +31,24 @@ Source = "https://github.com/janalis/biblindex-client"
 Issues = "https://github.com/janalis/biblindex-client/issues"
 
 [dependency-groups]
-# Used only by the example main.py runner — not shipped to library consumers.
+# Used only by the example.py runner — not shipped to library consumers.
 dev = [
     "dotenv-flow",
+    {include-group = "test"},
+    {include-group = "lint"},
+    {include-group = "typecheck"},
+]
+test = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "responses>=0.25",
+]
+lint = [
+    "ruff>=0.6",
+]
+typecheck = [
+    "mypy>=1.10",
+    "types-requests>=2.32",
 ]
 
 [build-system]
@@ -42,4 +57,62 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "biblindex_client"
-module-root = ""
+module-root = "src"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+filterwarnings = [
+    "error",
+]
+
+[tool.coverage.run]
+source = ["biblindex_client"]
+source_pkgs = ["biblindex_client"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_also = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = [".venv", "dist", "build"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line length handled by formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]
+
+[tool.mypy]
+# Lowest version current mypy supports; ruff's target-version = "py39"
+# already enforces real 3.9 compatibility on the source.
+python_version = "3.10"
+strict = true
+files = ["src/biblindex_client"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true

@@ -13,14 +13,37 @@ else
 	NULL := /dev/null
 endif
 
-.PHONY: install-pyenv install-python install-uv install-deps install-env run setup
+.PHONY: install-pyenv install-python install-uv install-deps install-env run setup test lint lint-fix
 
 run:
 	@if $(CHECK_CMD) pyenv >$(NULL) 2>&1; then \
 		pyenv local $(PYTHON_VERSION); \
 	fi
 	@uv sync
-	@uv run python main.py
+	@uv run python src/example.py
+
+test:
+	@if $(CHECK_CMD) pyenv >$(NULL) 2>&1; then \
+		pyenv local $(PYTHON_VERSION); \
+	fi
+	@uv sync --group test
+	@uv run pytest --cov=biblindex_client --cov-report=term-missing
+
+lint:
+	@if $(CHECK_CMD) pyenv >$(NULL) 2>&1; then \
+		pyenv local $(PYTHON_VERSION); \
+	fi
+	@uv sync --group lint
+	@uv run ruff check .
+	@uv run ruff format --check .
+
+lint-fix:
+	@if $(CHECK_CMD) pyenv >$(NULL) 2>&1; then \
+		pyenv local $(PYTHON_VERSION); \
+	fi
+	@uv sync --group lint
+	@uv run ruff check --fix .
+	@uv run ruff format .
 
 setup: install-pyenv install-python install-uv install-deps install-env
 

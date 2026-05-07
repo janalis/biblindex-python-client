@@ -2,10 +2,11 @@
 
 ## Tech Stack
 
-![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)
-![uv](https://img.shields.io/badge/uv-package%20manager-111111?logo=python)
-![Make](https://img.shields.io/badge/Make-automation-orange?logo=gnu)
+[![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
+[![uv](https://img.shields.io/badge/uv-package%20manager-111111?logo=python)](https://docs.astral.sh/uv/)
+[![Make](https://img.shields.io/badge/Make-automation-orange?logo=gnu)](https://www.gnu.org/software/make/)
 ![Cross Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey)
+[![CI](https://github.com/janalis/biblindex-client/actions/workflows/ci.yml/badge.svg)](https://github.com/janalis/biblindex-client/actions/workflows/ci.yml)
 
 ## Maintainers
 
@@ -69,15 +70,18 @@ make run
 ### Or manually
 
 ```bash
-uv run python main.py
+uv run python src/example.py
 ```
 
 ## Available commands
 
-| Command    | Description         |
-|------------|---------------------|
-| make setup | Install everything  |
-| make run   | Run the application |
+| Command       | Description                                  |
+|---------------|----------------------------------------------|
+| make setup    | Install everything                           |
+| make run      | Run the application                          |
+| make test     | Run the test suite with coverage report      |
+| make lint     | Run ruff check and format check              |
+| make lint-fix | Auto-fix lint issues and reformat the code   |
 
 ## Platform Support
 
