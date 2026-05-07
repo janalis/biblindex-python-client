@@ -113,3 +113,23 @@ jobs:
           name: dist
           path: dist/*
           if-no-files-found: error
+
+  notify:
+    name: Notify failure
+    if: always()
+    needs: [test, lint, typecheck, build]
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure')
+        uses: appleboy/discord-action@v1.2.0
+        with:
+          webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: GitHub Actions
+          avatar_url: https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png
+          message: |
+            ❌ Build failed
+            Repo: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.event.head_commit.message }}
+            Author: ${{ github.actor }}
+            🔗 https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
