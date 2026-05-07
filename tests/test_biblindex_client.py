@@ -9,12 +9,16 @@ import pytest
 import requests
 import responses
 
-from biblindex_client import BiblIndexClient
+from biblindex_client import BiblIndexClient, LazyCollection, LazyResource
 
 from .conftest import BASE_URL, TOKEN_URL, make_token_payload
 
 RESOURCE_PATH = "/api/quotations"
 RESOURCE_URL = f"{BASE_URL}{RESOURCE_PATH}"
+QUOTATION_URL = f"{BASE_URL}{RESOURCE_PATH}/1229419"
+EXTRACT_URL = f"{BASE_URL}/api/extracts/42"
+WORK_1_URL = f"{BASE_URL}/api/works/1"
+WORK_2_URL = f"{BASE_URL}/api/works/2"
 
 
 def _last_form(call: responses.Call) -> dict[str, list[str]]:
@@ -38,6 +42,7 @@ def test_constructor_stores_credentials_and_starts_unauthenticated(
     assert client.password == "pass"
     assert client.clientId == "id"
     assert client.clientSecret == "secret"
+    assert client.accept == "application/ld+json"
     assert client.accessToken is None
     assert client.refreshToken is None
     assert client.expiresIn is None
@@ -121,7 +126,25 @@ def test_request_first_call_authenticates_then_GETs(client: BiblIndexClient) -> 
     api_call = responses.calls[1]
     assert api_call.request.url.startswith(RESOURCE_URL)
     assert api_call.request.headers["Authorization"] == "Bearer A1"
-    assert api_call.request.headers["Accept"] == "application/json"
+    assert api_call.request.headers["Accept"] == "application/ld+json"
+
+
+@responses.activate
+def test_request_can_use_application_json_accept_header() -> None:
+    client = BiblIndexClient(
+        baseUrl=BASE_URL,
+        username="user",
+        password="pass",
+        clientId="id",
+        clientSecret="secret",
+        accept="application/json",
+    )
+    responses.post(TOKEN_URL, json=make_token_payload("A1", "R1"))
+    responses.get(RESOURCE_URL, json=[])
+
+    client.request(RESOURCE_PATH, {"page": 1})
+
+    assert responses.calls[1].request.headers["Accept"] == "application/json"
 
 
 @responses.activate
@@ -228,3 +251,335 @@ def test_request_normalizes_missing_leading_api_prefix(client: BiblIndexClient) 
 
     sent = responses.calls[0].request.url.split("?")[0]
     assert sent == RESOURCE_URL
+
+
+@responses.activate
+def test_request_lazy_fetches_collection_members_from_response_links(
+    client: BiblIndexClient,
+) -> None:
+    client.accessToken = "A"
+    client.refreshToken = "R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(
+        RESOURCE_URL,
+        json={
+            "@context": "/api/contexts/Quotation",
+            "@id": "/api/quotations",
+            "@type": "hydra:Collection",
+            "hydra:member": [
+                "/api/quotations/1229419",
+                {"@id": "/api/quotations/1229420", "@type": "Quotation"},
+            ],
+            "hydra:view": {"@id": "/api/quotations?page=1"},
+        },
+    )
+    responses.get(
+        QUOTATION_URL,
+        json={"@id": "/api/quotations/1229419", "@type": "Quotation", "number": 1229419},
+    )
+    responses.get(
+        f"{BASE_URL}/api/quotations/1229420",
+        json={"@id": "/api/quotations/1229420", "@type": "Quotation", "number": 1229420},
+    )
+
+    result = client.request(RESOURCE_PATH, {})
+
+    assert isinstance(result["hydra:member"], LazyCollection)
+    firstMember = result["hydra:member"][0]
+    secondMember = result["hydra:member"][1]
+    assert isinstance(firstMember, LazyResource)
+    assert isinstance(secondMember, LazyResource)
+    assert len(responses.calls) == 1
+
+    assert firstMember["number"] == 1229419
+    assert secondMember["@id"] == "/api/quotations/1229420"
+    assert len(responses.calls) == 2
+
+    assert secondMember["number"] == 1229420
+    assert len(responses.calls) == 3
+    assert responses.calls[1].request.url == QUOTATION_URL
+    assert responses.calls[2].request.url == f"{BASE_URL}/api/quotations/1229420"
+
+
+@responses.activate
+def test_request_lazy_fetches_collection_pages_when_accessing_later_items(
+    client: BiblIndexClient,
+) -> None:
+    client.accessToken = "A"
+    client.refreshToken = "R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(
+        RESOURCE_URL,
+        json={
+            "@id": "/api/quotations",
+            "@type": "hydra:Collection",
+            "hydra:member": [{"@id": "/api/quotations/1229419", "@type": "Quotation"}],
+            "hydra:totalItems": 2,
+            "hydra:view": {
+                "@id": "/api/quotations?page=1",
+                "@type": "hydra:PartialCollectionView",
+                "hydra:next": "/api/quotations?page=2",
+            },
+        },
+    )
+    responses.get(
+        f"{RESOURCE_URL}?page=2",
+        json={
+            "@id": "/api/quotations",
+            "@type": "hydra:Collection",
+            "hydra:member": [{"@id": "/api/quotations/1229420", "@type": "Quotation"}],
+            "hydra:totalItems": 2,
+            "hydra:view": {
+                "@id": "/api/quotations?page=2",
+                "@type": "hydra:PartialCollectionView",
+            },
+        },
+    )
+
+    result = client.request(RESOURCE_PATH, {})
+    members = result["hydra:member"]
+
+    assert isinstance(members, LazyCollection)
+    assert len(members) == 2
+    assert members.loadedItems == 1
+    assert len(responses.calls) == 1
+
+    assert members[1]["@id"] == "/api/quotations/1229420"
+    assert members.loadedItems == 2
+    assert len(responses.calls) == 2
+    assert responses.calls[1].request.url == f"{RESOURCE_URL}?page=2"
+
+
+@responses.activate
+def test_request_lazy_fetches_collection_members_from_item_ids(
+    client: BiblIndexClient,
+) -> None:
+    client.accessToken = "A"
+    client.refreshToken = "R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(
+        RESOURCE_URL,
+        json=[
+            {"id": 1229419, "extract": "/api/extracts/42"},
+            {"id": 1229420},
+        ],
+    )
+    responses.get(
+        QUOTATION_URL,
+        json={"id": 1229419, "extract": "/api/extracts/42", "number": 1229419},
+    )
+    responses.get(
+        f"{BASE_URL}/api/quotations/1229420",
+        json={"id": 1229420, "number": 1229420},
+    )
+
+    result = client.request(RESOURCE_PATH, {})
+
+    assert isinstance(result, LazyCollection)
+    firstMember = result[0]
+    secondMember = result[1]
+    assert isinstance(firstMember, LazyResource)
+    assert isinstance(secondMember, LazyResource)
+    assert len(responses.calls) == 1
+
+    assert firstMember["id"] == 1229419
+    assert len(responses.calls) == 1
+
+    assert firstMember["number"] == 1229419
+    assert isinstance(firstMember["extract"], LazyResource)
+    assert secondMember["number"] == 1229420
+    assert len(responses.calls) == 3
+    assert responses.calls[1].request.url == QUOTATION_URL
+    assert responses.calls[2].request.url == f"{BASE_URL}/api/quotations/1229420"
+
+
+@responses.activate
+def test_request_lazy_fetches_application_json_collection_pages(
+    client: BiblIndexClient,
+) -> None:
+    client.accept = "application/json"
+    client.accessToken = "A"
+    client.refreshToken = "R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(
+        RESOURCE_URL,
+        json=[
+            {"id": 1229419},
+            {"id": 1229420},
+        ],
+    )
+    responses.get(
+        f"{RESOURCE_URL}?page=2",
+        json=[
+            {"id": 1229421},
+        ],
+    )
+
+    result = client.request(RESOURCE_PATH, {"page": 1})
+
+    assert isinstance(result, LazyCollection)
+    assert result.loadedItems == 2
+    assert len(result) == 2
+    assert len(responses.calls) == 1
+
+    thirdMember = result[2]
+
+    assert isinstance(thirdMember, LazyResource)
+    assert thirdMember["id"] == 1229421
+    assert result.loadedItems == 3
+    assert len(responses.calls) == 2
+    assert responses.calls[1].request.url == f"{RESOURCE_URL}?page=2"
+    assert responses.calls[1].request.headers["Accept"] == "application/json"
+
+
+@responses.activate
+def test_request_lazy_fetches_linked_item_properties(client: BiblIndexClient) -> None:
+    client.accessToken = "A"
+    client.refreshToken = "R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(
+        QUOTATION_URL,
+        json={
+            "@id": "/api/quotations/1229419",
+            "@type": "Quotation",
+            "extract": "/api/extracts/42",
+            "works": [
+                "/api/works/1",
+                {"@id": "/api/works/2", "@type": "Work"},
+            ],
+        },
+    )
+    responses.get(
+        EXTRACT_URL,
+        json={"@id": "/api/extracts/42", "@type": "Extract", "title": "Extract 42"},
+    )
+    responses.get(
+        WORK_1_URL,
+        json={"@id": "/api/works/1", "@type": "Work", "title": "Work 1"},
+    )
+    responses.get(
+        WORK_2_URL,
+        json={"@id": "/api/works/2", "@type": "Work", "title": "Work 2"},
+    )
+
+    result = client.request("/api/quotations/1229419", {})
+
+    assert result["@id"] == "/api/quotations/1229419"
+    assert isinstance(result["extract"], LazyResource)
+    assert isinstance(result["works"][0], LazyResource)
+    assert isinstance(result["works"][1], LazyResource)
+    assert len(responses.calls) == 1
+
+    assert result["extract"]["title"] == "Extract 42"
+    assert len(responses.calls) == 2
+
+    assert result["works"][0]["title"] == "Work 1"
+    assert result["works"][1]["@id"] == "/api/works/2"
+    assert len(responses.calls) == 3
+
+    assert result["works"][1]["title"] == "Work 2"
+    assert len(responses.calls) == 4
+
+
+@responses.activate
+def test_request_lazy_fetch_uses_cache_when_same_resource_is_linked_multiple_times(
+    client: BiblIndexClient,
+) -> None:
+    client.accessToken = "A"
+    client.refreshToken = "R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(
+        QUOTATION_URL,
+        json={
+            "@id": "/api/quotations/1229419",
+            "extract": "/api/extracts/42",
+            "relatedExtract": "/api/extracts/42",
+        },
+    )
+    responses.get(
+        EXTRACT_URL,
+        json={"@id": "/api/extracts/42", "@type": "Extract", "title": "Extract 42"},
+    )
+
+    result = client.request("/api/quotations/1229419", {})
+
+    assert result["extract"] is result["relatedExtract"]
+    assert len(responses.calls) == 1
+
+    assert result["extract"]["title"] == "Extract 42"
+    assert len(responses.calls) == 2
+    assert result["relatedExtract"]["title"] == "Extract 42"
+    assert len(responses.calls) == 2
+
+
+def test_client_helpers_cover_non_resource_branches(client: BiblIndexClient) -> None:
+    assert client._linkedResource(42) is None
+    assert client._linkedResource("https://other.example.com/api/things/1") is None
+    assert client._linkedResource("not-a-resource") is None
+    assert client._linkedResource("/api/token") is None
+    assert client._linkedResource(f"{BASE_URL}/api/things/1") == "/api/things/1"
+    assert client._linkedResource(f"{BASE_URL}/api/things/1?foo=bar") == ("/api/things/1?foo=bar")
+    assert client._linkedResource("api/things/1") == "/api/things/1"
+
+    assert client._nextPageResource({}) is None
+    assert client._nextPlainJsonPageResource("/api/things") is None
+    assert client._nextPlainJsonPageResource("/api/things?page=abc") is None
+    assert client._nextPlainJsonPageResource("/api/things?page=1&limit=10") == (
+        "/api/things?page=2&limit=10"
+    )
+
+    assert client._resourceFromCollectionItem({}, "/api/things") is None
+    assert client._resourceFromCollectionItem({"id": 1}, "/not-api/things") is None
+    assert client._resourceFromCollectionItem({"id": 1}, "/api/things/1") is None
+    assert client._normalizeResource(f"{BASE_URL}/api/things/1") == "/api/things/1"
+    assert client._resourceWithParams("/api/things?existing=1", {"page": 2}) == (
+        "/api/things?existing=1&page=2"
+    )
+
+
+def test_client_wrapping_helpers_cover_reference_branches(client: BiblIndexClient) -> None:
+    cache: dict[str, object] = {}
+
+    assert client._wrapLinkedResources(
+        [{"name": "not a resource"}],
+        currentResource="/api/things",
+        cache=cache,
+    ) == [{"name": "not a resource"}]
+    assert (
+        client._wrapLinkedResources(
+            "/api/things/1",
+            currentResource="/api/things/1",
+            cache=cache,
+        )
+        == "/api/things/1"
+    )
+    assert isinstance(
+        client._wrapLinkedResources(
+            "/api/things/2",
+            currentResource="/api/things/1",
+            cache=cache,
+        ),
+        LazyResource,
+    )
+
+    wrappedSelfReference = client._wrapLinkedResourceProperties(
+        {"self": "/api/things/1"},
+        currentResource="/api/things/1",
+        cache=cache,
+    )
+    assert wrappedSelfReference == {"self": "/api/things/1"}
+
+    wrappedLinkedMapping = client._wrapLinkedResourceProperties(
+        {"place": {"@id": "/api/places/1", "name": "Paris"}},
+        currentResource="/api/things/1",
+        cache=cache,
+    )
+    assert isinstance(wrappedLinkedMapping["place"], LazyResource)
+    assert wrappedLinkedMapping["place"]["@id"] == "/api/places/1"
+
+    wrappedNestedSelfReference = client._wrapLinkedResourceProperties(
+        {"place": {"@id": "/api/things/1", "name": "Current"}},
+        currentResource="/api/things/1",
+        cache=cache,
+    )
+    assert wrappedNestedSelfReference == {"place": {"@id": "/api/things/1", "name": "Current"}}

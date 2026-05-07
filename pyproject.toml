@@ -76,7 +76,6 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["biblindex_client"]
-source_pkgs = ["biblindex_client"]
 branch = true
 
 [tool.coverage.report]
