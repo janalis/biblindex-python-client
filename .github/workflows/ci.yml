@@ -43,8 +43,6 @@ jobs:
           name: Test Results (${{ matrix.python-version }})
           path: test-results.xml
           reporter: python-xunit
-          fail-on-error: false
-          only-summary: true
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
