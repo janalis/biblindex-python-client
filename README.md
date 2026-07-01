@@ -103,25 +103,27 @@ For the smoothest experience:
 
 ## Use as a library in another project
 
-The package is published directly from this Git repository — no PyPI account
-needed. Consumers install it by adding the Git URL to their own project.
+Released versions are published to [PyPI](https://pypi.org/project/biblindex-client/).
 
 ### With `uv`
 
 ```bash
-uv add "biblindex-client @ git+https://github.com/janalis/biblindex-client.git"
-```
-
-To pin a specific tag, branch or commit:
-
-```bash
-uv add "biblindex-client @ git+https://github.com/janalis/biblindex-client.git@v0.1.0"
+uv add biblindex-client
 ```
 
 ### With `pip`
 
 ```bash
-pip install "biblindex-client @ git+https://github.com/janalis/biblindex-client.git"
+pip install biblindex-client
+```
+
+### Installing an unreleased commit
+
+To use a version that hasn't been released to PyPI yet, install directly from the
+Git repository (optionally pinned to a tag, branch or commit):
+
+```bash
+uv add "biblindex-client @ git+https://github.com/janalis/biblindex-client.git@v0.1.0"
 ```
 
 ### Or in `pyproject.toml`
@@ -208,16 +210,9 @@ Pagination uses the `?page=N` query parameter automatically — each fetch incre
 make bump-patch   # or bump-minor / bump-major
 ```
 
-This bumps the version in `pyproject.toml`, commits, tags (`vX.Y.Z`), and pushes to GitHub. The [Release workflow](.github/workflows/release.yml) then builds the distribution and creates a GitHub Release with auto-generated release notes.
+This bumps the version in `pyproject.toml`, commits, tags (`vX.Y.Z`), and pushes to GitHub. The [Release workflow](.github/workflows/release.yml) then builds the distribution, publishes it to **TestPyPI** and then **PyPI**, and creates a GitHub Release with auto-generated release notes.
 
-Consumers pin the new tag in their `git+` URL.
-
-If you ever want to publish to a real index (PyPI, private registry):
-
-```bash
-uv build         # produces dist/*.whl and dist/*.tar.gz
-uv publish       # upload (configure credentials via UV_PUBLISH_TOKEN or ~/.pypirc)
-```
+Publishing uses [PyPI trusted publishing](https://docs.pypi.org/trusted-publishers/) (OIDC) via `uv publish` — no API tokens or credentials are stored or needed locally. The TestPyPI upload acts as a smoke test that gates the real PyPI release.
 
 ## Contributing
 
