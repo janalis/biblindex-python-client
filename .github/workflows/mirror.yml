@@ -1,0 +1,40 @@
+name: Mirror to GitLab
+
+# Keeps the GitLab (huma-num) repo in sync with GitHub, which is the source of
+# truth. Runs on every branch/tag push and deletion, plus an hourly safety net.
+#
+# Required secret (Settings → Secrets and variables → Actions):
+#   GITLAB_MIRROR_TOKEN — GitLab access token with `write_repository` scope
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  delete:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+
+concurrency:
+  group: mirror-gitlab
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Mirror to GitLab
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push all refs to GitLab
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLAB_TOKEN: ${{ secrets.GITLAB_MIRROR_TOKEN }}
+          GITLAB_URL: gitlab.huma-num.fr/biblindex/biblindex-python-client.git
+        run: |
+          set -euo pipefail
+          git clone --mirror \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo.git
+          cd repo.git
+          # Drop GitHub-internal refs so they aren't mirrored.
+          git for-each-ref --format='%(refname)' refs/pull \
+            | while read -r ref; do git update-ref -d "$ref"; done || true
+          git push --mirror "https://oauth2:${GITLAB_TOKEN}@${GITLAB_URL}"
