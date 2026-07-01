@@ -37,4 +37,10 @@ jobs:
           # Drop GitHub-internal refs so they aren't mirrored.
           git for-each-ref --format='%(refname)' refs/pull \
             | while read -r ref; do git update-ref -d "$ref"; done || true
-          git push --mirror "https://oauth2:${GITLAB_TOKEN}@${GITLAB_URL}"
+          # Strip any stray whitespace/newline from the token, and feed it via a
+          # credential helper so it never lands in the remote URL or logs.
+          GITLAB_TOKEN="$(printf '%s' "$GITLAB_TOKEN" | tr -d '[:space:]')"
+          git remote add gitlab "https://${GITLAB_URL}"
+          git config credential.helper \
+            '!f() { echo "username=oauth2"; echo "password=$GITLAB_TOKEN"; }; f'
+          git push --mirror gitlab
