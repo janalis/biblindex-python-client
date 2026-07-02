@@ -4,7 +4,7 @@
 [![uv](https://img.shields.io/badge/uv-package%20manager-111111?logo=python)](https://docs.astral.sh/uv/)
 [![Make](https://img.shields.io/badge/Make-automation-orange?logo=gnu)](https://www.gnu.org/software/make/)
 ![Cross Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey)
-[![CI](https://github.com/janalis/biblindex-client/actions/workflows/ci.yml/badge.svg)](https://github.com/janalis/biblindex-client/actions/workflows/ci.yml)
+[![CI](https://github.com/janalis/biblindex-python-client/actions/workflows/ci.yml/badge.svg)](https://github.com/janalis/biblindex-python-client/actions/workflows/ci.yml)
 
 ## Maintainers
 
@@ -123,7 +123,7 @@ To use a version that hasn't been released to PyPI yet, install directly from th
 Git repository (optionally pinned to a tag, branch or commit):
 
 ```bash
-uv add "biblindex-client @ git+https://github.com/janalis/biblindex-client.git@v0.1.0"
+uv add "biblindex-client @ git+https://github.com/janalis/biblindex-python-client.git@v0.1.0"
 ```
 
 ### Or in `pyproject.toml`
@@ -131,7 +131,7 @@ uv add "biblindex-client @ git+https://github.com/janalis/biblindex-client.git@v
 ```toml
 [project]
 dependencies = [
-    "biblindex-client @ git+https://github.com/janalis/biblindex-client.git@v0.1.0",
+    "biblindex-client @ git+https://github.com/janalis/biblindex-python-client.git@v0.1.0",
 ]
 ```
 

@@ -28,8 +28,8 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://www.biblindex.org/api"
-Source = "https://github.com/janalis/biblindex-client"
-Issues = "https://github.com/janalis/biblindex-client/issues"
+Source = "https://github.com/janalis/biblindex-python-client"
+Issues = "https://github.com/janalis/biblindex-python-client/issues"
 
 [dependency-groups]
 # Used only by the example.py runner — not shipped to library consumers.
