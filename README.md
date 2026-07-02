@@ -1,10 +1,10 @@
 # BiblIndex Python client
 
-[![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python)](https://www.python.org/)
 [![uv](https://img.shields.io/badge/uv-package%20manager-111111?logo=python)](https://docs.astral.sh/uv/)
 [![Make](https://img.shields.io/badge/Make-automation-orange?logo=gnu)](https://www.gnu.org/software/make/)
 ![Cross Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey)
-[![CI](https://github.com/janalis/biblindex-python-client/actions/workflows/ci.yml/badge.svg)](https://github.com/janalis/biblindex-client/actions/workflows/ci.yml)
+[![CI](https://github.com/janalis/biblindex-client/actions/workflows/ci.yml/badge.svg)](https://github.com/janalis/biblindex-client/actions/workflows/ci.yml)
 
 ## Maintainers
 
@@ -52,7 +52,7 @@ uv sync
 ### Environment variables
 
 ```bash
-cp .env .env.local
+cp .env.example .env.local
 ```
 
 Edit .env.local with your configuration.
@@ -149,6 +149,25 @@ client = BiblIndexClient(
 )
 
 quotations = client.request("/api/quotations", {"page": 1})
+```
+
+### Reliability
+
+Every HTTP call uses a 30-second timeout by default; pass `timeout=` to change it (a float, a `(connect, read)` tuple, or `None` to disable). Retries are off by default — pass `retries=N` to enable transport-level retries with backoff for GET requests on transient errors (429 and 5xx responses, connection failures). Token requests are never blindly retried; instead, a 401 API response triggers an automatic token renewal (refresh grant, falling back to the password grant) and a single replay of the request.
+
+The client can be used as a context manager to release the underlying HTTP session:
+
+```python
+with BiblIndexClient(
+    baseUrl="https://www.biblindex.org",
+    username="...",
+    password="...",
+    clientId="...",
+    clientSecret="...",
+    timeout=10.0,
+    retries=3,
+) as client:
+    quotations = client.request("/api/quotations", {"page": 1})
 ```
 
 ### Lazy fetching

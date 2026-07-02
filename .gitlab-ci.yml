@@ -45,7 +45,7 @@ test:
   image: ghcr.io/astral-sh/uv:python$PYTHON_VERSION-bookworm-slim
   parallel:
     matrix:
-      - PYTHON_VERSION: ["3.9", "3.10", "3.11", "3.12"]
+      - PYTHON_VERSION: ["3.9", "3.10", "3.11", "3.12", "3.13"]
   script:
     - uv python install "$PYTHON_VERSION"
     - uv sync --group test --python "$PYTHON_VERSION"

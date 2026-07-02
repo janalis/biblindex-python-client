@@ -102,14 +102,14 @@ install-deps: ## Install Python dependencies from pyproject.toml
 	@echo "Installing Python dependencies from pyproject.toml..."
 	@uv sync
 
-install-env: ## Create .env.local from .env template
-	@if [ ! -f .env ]; then \
-		echo ".env not found, skipping"; \
+install-env: ## Create .env.local from .env.example template
+	@if [ ! -f .env.example ]; then \
+		echo ".env.example not found, skipping"; \
 	elif [ -f .env.local ]; then \
 		echo ".env.local already exists"; \
 	else \
-		echo "Creating .env.local from .env"; \
-		python -c "from shutil import copyfile; copyfile('.env', '.env.local')"; \
+		echo "Creating .env.local from .env.example"; \
+		python -c "from shutil import copyfile; copyfile('.env.example', '.env.local')"; \
 	fi
 
 bump-patch: ## Bump version (patch)

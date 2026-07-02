@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from unittest import mock
 from urllib.parse import parse_qs
 
 import pytest
 import requests
 import responses
+from urllib3.util.retry import Retry
 
 from biblindex_client import BiblIndexClient, LazyCollection, LazyResource
 
@@ -43,10 +45,77 @@ def test_constructor_stores_credentials_and_starts_unauthenticated(
     assert client.clientId == "id"
     assert client.clientSecret == "secret"
     assert client.accept == "application/ld+json"
+    assert client.timeout == 30.0
+    assert client.retries == 0
     assert client.accessToken is None
     assert client.refreshToken is None
     assert client.expiresIn is None
     assert isinstance(client.session, requests.Session)
+
+
+def test_constructor_accepts_timeout_tuple_and_none() -> None:
+    tupleClient = BiblIndexClient(
+        baseUrl=BASE_URL,
+        username="user",
+        password="pass",
+        clientId="id",
+        clientSecret="secret",
+        timeout=(3.05, 27),
+    )
+    assert tupleClient.timeout == (3.05, 27)
+
+    noTimeoutClient = BiblIndexClient(
+        baseUrl=BASE_URL,
+        username="user",
+        password="pass",
+        clientId="id",
+        clientSecret="secret",
+        timeout=None,
+    )
+    assert noTimeoutClient.timeout is None
+
+
+def test_constructor_default_mounts_no_retry_adapter(client: BiblIndexClient) -> None:
+    assert client.session.get_adapter(BASE_URL).max_retries.total == 0
+
+
+def test_constructor_retries_mounts_configured_retry_adapter() -> None:
+    client = BiblIndexClient(
+        baseUrl=BASE_URL,
+        username="user",
+        password="pass",
+        clientId="id",
+        clientSecret="secret",
+        retries=3,
+    )
+
+    retry = client.session.get_adapter(BASE_URL).max_retries
+    assert isinstance(retry, Retry)
+    assert retry.total == 3
+    assert retry.allowed_methods == frozenset({"GET"})
+    assert retry.status_forcelist == (429, 500, 502, 503, 504)
+    assert retry.raise_on_status is False
+    # Both schemes share the same configured adapter.
+    assert client.session.get_adapter("http://example.com") is client.session.get_adapter(BASE_URL)
+
+
+# ---------------------------------------------------------------------------
+# close() / context manager
+# ---------------------------------------------------------------------------
+
+
+def test_close_closes_session(client: BiblIndexClient) -> None:
+    with mock.patch.object(client.session, "close") as sessionClose:
+        client.close()
+
+    sessionClose.assert_called_once_with()
+
+
+def test_context_manager_returns_client_and_closes_on_exit(client: BiblIndexClient) -> None:
+    with mock.patch.object(client.session, "close") as sessionClose:
+        with client as entered:
+            assert entered is client
+        sessionClose.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +152,18 @@ def test_fetch_tokens_uses_password_grant(client: BiblIndexClient) -> None:
     assert form["client_secret"] == ["secret"]
 
 
+@responses.activate
+def test_fetch_tokens_raises_http_error_on_bad_credentials(client: BiblIndexClient) -> None:
+    responses.post(TOKEN_URL, status=400, json={"error": "invalid_grant"})
+
+    with pytest.raises(requests.HTTPError):
+        client.fetchTokens()
+
+    assert client.accessToken is None
+    assert client.refreshToken is None
+    assert client.expiresIn is None
+
+
 # ---------------------------------------------------------------------------
 # refreshTokens()
 # ---------------------------------------------------------------------------
@@ -106,6 +187,58 @@ def test_refresh_tokens_uses_refresh_grant_and_updates_state(
     assert client.accessToken == "A2"
     assert client.refreshToken == "R2"
     assert client.expiresIn is not None
+
+
+@responses.activate
+def test_refresh_tokens_raises_http_error_on_rejected_refresh_token(
+    client: BiblIndexClient,
+) -> None:
+    client.accessToken = "stale-A"
+    client.refreshToken = "revoked-R"
+    responses.post(TOKEN_URL, status=401, json={"error": "invalid_grant"})
+
+    with pytest.raises(requests.HTTPError):
+        client.refreshTokens()
+
+    assert client.accessToken == "stale-A"
+    assert client.refreshToken == "revoked-R"
+
+
+# ---------------------------------------------------------------------------
+# Timeouts
+# ---------------------------------------------------------------------------
+
+
+@responses.activate
+def test_request_passes_timeout_to_get(client: BiblIndexClient) -> None:
+    client.accessToken = "A"
+    client.refreshToken = "R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(RESOURCE_URL, json={})
+
+    client.request(RESOURCE_PATH, {})
+
+    assert responses.calls[0].request.req_kwargs["timeout"] == 30.0
+
+
+@responses.activate
+def test_fetch_tokens_and_refresh_tokens_pass_timeout() -> None:
+    client = BiblIndexClient(
+        baseUrl=BASE_URL,
+        username="user",
+        password="pass",
+        clientId="id",
+        clientSecret="secret",
+        timeout=5,
+    )
+    responses.post(TOKEN_URL, json=make_token_payload("A1", "R1"))
+    responses.post(TOKEN_URL, json=make_token_payload("A2", "R2"))
+
+    client.fetchTokens()
+    client.refreshTokens()
+
+    assert responses.calls[0].request.req_kwargs["timeout"] == 5
+    assert responses.calls[1].request.req_kwargs["timeout"] == 5
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +314,95 @@ def test_request_refreshes_when_token_expired(client: BiblIndexClient) -> None:
     assert refresh_form["refresh_token"] == ["good-R"]
     # Second call: GET with the new bearer token.
     assert responses.calls[1].request.headers["Authorization"] == "Bearer fresh-A"
+
+
+@responses.activate
+def test_request_refreshes_token_inside_leeway_window(client: BiblIndexClient) -> None:
+    """A token expiring within the leeway window is refreshed up front."""
+    client.accessToken = "almost-stale-A"
+    client.refreshToken = "good-R"
+    client.expiresIn = datetime.now() + timedelta(seconds=10)
+    responses.post(TOKEN_URL, json=make_token_payload("fresh-A", "fresh-R"))
+    responses.get(RESOURCE_URL, json={})
+
+    client.request(RESOURCE_PATH, {})
+
+    refresh_form = _last_form(responses.calls[0])
+    assert refresh_form["grant_type"] == ["refresh_token"]
+    assert responses.calls[1].request.headers["Authorization"] == "Bearer fresh-A"
+
+
+@responses.activate
+def test_request_retries_once_with_renewed_token_on_401(client: BiblIndexClient) -> None:
+    client.accessToken = "invalidated-A"
+    client.refreshToken = "good-R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(RESOURCE_URL, status=401)
+    responses.post(TOKEN_URL, json=make_token_payload("new-A", "new-R"))
+    responses.get(RESOURCE_URL, json={"ok": True})
+
+    result = client.request(RESOURCE_PATH, {})
+
+    assert result == {"ok": True}
+    assert len(responses.calls) == 3
+    refresh_form = _last_form(responses.calls[1])
+    assert refresh_form["grant_type"] == ["refresh_token"]
+    assert responses.calls[2].request.headers["Authorization"] == "Bearer new-A"
+
+
+@responses.activate
+def test_request_does_not_loop_on_persistent_401(client: BiblIndexClient) -> None:
+    """The 401 replay happens exactly once; a second 401 raises."""
+    client.accessToken = "rejected-A"
+    client.refreshToken = "good-R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(RESOURCE_URL, status=401)
+    responses.post(TOKEN_URL, json=make_token_payload("new-A", "new-R"))
+    responses.get(RESOURCE_URL, status=401)
+
+    with pytest.raises(requests.HTTPError):
+        client.request(RESOURCE_PATH, {})
+
+    assert len(responses.calls) == 3
+
+
+@responses.activate
+def test_request_falls_back_to_password_grant_when_refresh_rejected(
+    client: BiblIndexClient,
+) -> None:
+    client.accessToken = "invalidated-A"
+    client.refreshToken = "revoked-R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(RESOURCE_URL, status=401)
+    responses.post(TOKEN_URL, status=400, json={"error": "invalid_grant"})
+    responses.post(TOKEN_URL, json=make_token_payload("new-A", "new-R"))
+    responses.get(RESOURCE_URL, json={"ok": True})
+
+    result = client.request(RESOURCE_PATH, {})
+
+    assert result == {"ok": True}
+    assert len(responses.calls) == 4
+    assert _last_form(responses.calls[1])["grant_type"] == ["refresh_token"]
+    assert _last_form(responses.calls[2])["grant_type"] == ["password"]
+    assert responses.calls[3].request.headers["Authorization"] == "Bearer new-A"
+
+
+@responses.activate
+def test_request_401_without_refresh_token_uses_password_grant(
+    client: BiblIndexClient,
+) -> None:
+    client.accessToken = "invalidated-A"
+    client.refreshToken = None
+    client.expiresIn = None
+    responses.get(RESOURCE_URL, status=401)
+    responses.post(TOKEN_URL, json=make_token_payload("new-A", "new-R"))
+    responses.get(RESOURCE_URL, json={"ok": True})
+
+    result = client.request(RESOURCE_PATH, {})
+
+    assert result == {"ok": True}
+    assert _last_form(responses.calls[1])["grant_type"] == ["password"]
+    assert responses.calls[2].request.headers["Authorization"] == "Bearer new-A"
 
 
 @responses.activate
