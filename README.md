@@ -174,12 +174,17 @@ with BiblIndexClient(
 
 API responses are automatically wrapped in lazy proxies that defer network requests until data is actually read:
 
-- **`LazyResource`** (`MutableMapping`): resource links (e.g. `/api/extracts/42`, `{"@id": "/api/works/1"}`) embedded in responses are wrapped as lazy mappings — the linked resource is fetched only when a field is accessed.
-- **`LazyCollection`** (`MutableSequence`): paginated Hydra collections and plain JSON arrays are wrapped as lazy sequences — subsequent pages are fetched on demand when iterating or indexing beyond the current page.
+- **`LazyResource`** (`Mapping`, read-only): resource links (e.g. `/api/extracts/42`, `{"@id": "/api/works/1"}`) embedded in responses are wrapped as lazy mappings — the linked resource is fetched only when a field is accessed.
+- **`LazyCollection`** (`Sequence`, read-only): paginated Hydra collections and plain JSON arrays are wrapped as lazy sequences — subsequent pages are fetched on demand when iterating or indexing beyond the current page.
 
-Hydra metadata properties (`hydra:member`, `hydra:view`, `hydra:search`, `hydra:totalItems`) are not exposed through the lazy wrappers — collections are returned directly as `LazyCollection` instances.
+Hydra envelope properties are not exposed through the lazy wrappers. Both
+spellings are understood: API Platform 4 serves them bare (`member`, `view`,
+`search`, `totalItems`), API Platform 3 prefixes them (`hydra:member`, ...).
+Bare names are only treated as envelope metadata inside a real collection
+envelope, so a resource with a genuine field called `member` keeps it.
 
-Caching ensures the same API resource is never fetched twice within a single response tree.
+Caching ensures the same API resource is never fetched twice within a single
+response tree.
 
 ```python
 from biblindex_client import BiblIndexClient, LazyResource
@@ -194,34 +199,108 @@ print(item["@id"])       # triggers fetch of /api/quotations/1229419
 
 #### Using `application/json` (plain JSON)
 
-> **Warning:** Prefer `application/ld+json` (the default) whenever the API supports it. The Hydra JSON-LD format provides metadata (`hydra:totalItems`, `hydra:view`) that enables accurate `len()` and proper next-page resolution via `hydra:next` links. With plain `application/json`, total item count is unavailable and pagination falls back to incrementing `?page=N`, which may yield empty pages at the end.
-
-When the API returns plain JSON arrays instead of Hydra collections, configure the `accept` media type:
+The API also serves plain JSON arrays, selected with `accept="application/json"`:
 
 ```python
-from biblindex_client import BiblIndexClient, LazyCollection, LazyResource
-
-client = BiblIndexClient(
-    baseUrl="https://www.biblindex.org",
-    username="...",
-    password="...",
-    clientId="...",
-    clientSecret="...",
-    accept="application/json",
-)
-
+client = BiblIndexClient(..., accept="application/json")
 collection = client.request("/api/quotations", {"page": 1})
-
-# The array is wrapped in a LazyCollection — pages are fetched lazily
-print(type(collection))           # <class 'LazyCollection'>
-print(collection.loadedItems)     # items loaded so far (page 1)
-
-# Accessing beyond the current page triggers ?page=N
-item = collection[2]              # fetches /api/quotations?page=2
-print(item["id"])                 # reads from the fetched item
 ```
 
-Pagination uses the `?page=N` query parameter automatically — each fetch increments the page number. If the API returns an empty array the collection stops fetching further pages.
+Prefer the default `application/ld+json`: the JSON-LD envelope carries
+`totalItems` (so `len()` is the real total) and an explicit `next` link. With
+plain JSON there is no total, and pagination falls back to incrementing
+`?page=N` until a page comes back empty. Note the two media types differ in
+what they carry per item — plain JSON has `id` but no `@id`, JSON-LD the
+reverse on some resources, which is why `backfillIds` exists.
+
+#### Pagination
+
+The server serves at most **100 items per page** whatever `itemsPerPage` asks
+for, so a single large request is never enough. Asking for more raises
+`PageSizeError` rather than silently returning a short page.
+
+Implicit paging is capped by `maxAutoPages` (default 50). Without a cap a single
+`list(collection)` on `/api/quotations` would issue several thousand requests.
+Walk a whole collection explicitly instead:
+
+```python
+from biblindex_client import PaginationLimitError
+
+books = client.fetchAll("/api/books")             # every page, explicitly
+for verse in client.iterCollection("/api/verses"):  # streamed, page by page
+    ...
+
+collection = client.request("/api/books", {"page": 1})
+collection.fetchAll(maxItems=500)
+collection.iterPages()
+collection.totalItems, collection.loadedItems, collection.isComplete
+```
+
+`len(collection)` reports the server's `totalItems` — the answer to "how many
+match" — which may exceed `loadedItems`. That gap is deliberate; `isComplete`
+tells you whether everything has been loaded.
+
+#### Filter validation
+
+API Platform answers **200 and silently ignores** query parameters an endpoint
+does not declare, so an unfiltered result is indistinguishable from a filtered
+one. The client refuses them instead, before the request goes out:
+
+```python
+from biblindex_client import UndeclaredParameterError
+
+client.filtersFor("/api/quotations")   # frozenset({'work'})
+client.filtersFor("/api/verses")       # bible, book, chapter, number (+ [] forms)
+
+client.request("/api/quotations", {"author": 42})
+# UndeclaredParameterError: /api/quotations does not declare 'author'. API
+# Platform ignores undeclared query parameters and still answers 200, so the
+# result would look filtered but would not be. Declared filters: work.
+```
+
+The vocabulary comes from `/api/docs.jsonopenapi`, fetched once per client and
+only when a call actually carries a filter — the plain `{"page": N}` browse path
+costs nothing extra. The `search` block of each collection response reinforces
+it for free. Pass `validateParams=False` (per client or per call) to opt out.
+
+`filtersFor()` raises `FilterVocabularyUnavailableError` rather than reporting
+"no filters" for an endpoint it could not read — an empty answer would be
+indistinguishable from a fact about the API.
+
+#### Errors
+
+| exception | when |
+|---|---|
+| `AccessDeniedError` | 403 — names `ROLE_API_CLIENT` when the corpus is the target |
+| `AuthenticationError` | 401, or the token endpoint rejecting the grant |
+| `BiblIndexHTTPError` | any other failing status |
+| `UndeclaredParameterError` | a filter the endpoint would ignore |
+| `PageSizeError` | `itemsPerPage` above the server's cap |
+| `PaginationLimitError` | implicit paging past `maxAutoPages` |
+| `FilterVocabularyUnavailableError` | declared filters could not be determined |
+
+All of them derive from `BiblIndexError`, and the HTTP ones also derive from
+`requests.HTTPError`, so existing `except requests.HTTPError` handlers keep
+working. Error bodies are read, so the server's own explanation is preserved.
+
+#### Read-only
+
+`LazyResource` and `LazyCollection` are `Mapping` and `Sequence`. The API is not
+writable through this client, so an assignment that could never reach the server
+is refused rather than kept in memory looking like a saved change. Use
+`dict(resource)` or `list(collection)` for a mutable copy.
+
+#### Known API limitations
+
+Verified against the live API on 02/09/2026:
+
+| behaviour | consequence |
+|---|---|
+| `itemsPerPage` capped at 100 | always page; `fetchAll()` does it for you |
+| `?locale=` accepted and ignored | `name`/`description` are English regardless; refused by the client |
+| `id` absent in ld+json on `authors`, `work_editions`, `editions` | backfilled from the `@id` IRI (`backfillIds=False` to opt out) |
+| `/api/quotations` declares only `work` | no filter by biblical segment or author |
+| corpus endpoints need `ROLE_API_CLIENT` | 403 until the account is granted it |
 
 ## Publishing a new version
 

@@ -91,6 +91,8 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+# The suite covers every statement and branch; keep it that way.
+fail_under = 100
 exclude_also = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

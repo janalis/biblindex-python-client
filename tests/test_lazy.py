@@ -15,7 +15,7 @@ EXTRACT_URL = f"{BASE_URL}/api/extracts/42"
 
 
 @responses.activate
-def test_lazy_resource_behaves_like_mutable_mapping(client: BiblIndexClient) -> None:
+def test_lazy_resource_behaves_like_read_only_mapping(client: BiblIndexClient) -> None:
     client.accessToken = "A"
     client.refreshToken = "R"
     client.expiresIn = datetime.now() + timedelta(seconds=300)
@@ -28,15 +28,21 @@ def test_lazy_resource_behaves_like_mutable_mapping(client: BiblIndexClient) -> 
 
     assert resource.resource == "/api/extracts/42"
     assert repr(resource) == "LazyResource('/api/extracts/42')"
-    assert len(resource) == 3
-    assert set(resource) == {"@id", "title", "place"}
+    # "id" is absent from the ld+json body and backfilled from the @id IRI.
+    assert len(resource) == 4
+    assert set(resource) == {"@id", "title", "place", "id"}
+    assert resource["id"] == 42
 
-    resource["title"] = "Updated"
-    assert resource["title"] == "Updated"
     assert isinstance(resource["place"], LazyResource)
-    del resource["place"]
-    assert "place" not in resource
-    assert repr(resource) == "{'@id': '/api/extracts/42', 'title': 'Updated'}"
+
+    # The API is read-only through this client, so a write that could never
+    # reach the server is refused rather than silently kept in memory.
+    with pytest.raises(TypeError):
+        resource["title"] = "Updated"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        del resource["place"]  # type: ignore[attr-defined]
+
+    assert resource["title"] == "Extract 42"
 
 
 def test_lazy_resource_returns_seed_while_already_loading(client: BiblIndexClient) -> None:
@@ -47,7 +53,7 @@ def test_lazy_resource_returns_seed_while_already_loading(client: BiblIndexClien
 
 
 @responses.activate
-def test_lazy_collection_behaves_like_mutable_sequence(client: BiblIndexClient) -> None:
+def test_lazy_collection_behaves_like_read_only_sequence(client: BiblIndexClient) -> None:
     client.accessToken = "A"
     client.refreshToken = "R"
     client.expiresIn = datetime.now() + timedelta(seconds=300)
@@ -82,10 +88,11 @@ def test_lazy_collection_behaves_like_mutable_sequence(client: BiblIndexClient) 
     assert collection[-1]["id"] == 3
     assert repr(collection) == "LazyCollection(loadedItems=3, totalItems=None)"
 
-    collection[0] = 10
-    collection.insert(1, 11)
-    del collection[2]
-    assert collection[:2] == [10, 11]
+    with pytest.raises(TypeError):
+        collection[0] = 10  # type: ignore[index]
+    with pytest.raises(TypeError):
+        del collection[2]  # type: ignore[attr-defined]
+    assert not hasattr(collection, "insert")
 
 
 @responses.activate
@@ -210,10 +217,10 @@ def test_lazy_resource_blocks_hydra_keys(client: BiblIndexClient) -> None:
 
     with pytest.raises(KeyError):
         resource["hydra:view"]
-    with pytest.raises(KeyError):
-        resource["hydra:totalItems"] = 2
-    with pytest.raises(KeyError):
-        del resource["hydra:view"]
+    with pytest.raises(TypeError):
+        resource["hydra:totalItems"] = 2  # type: ignore[index]
+    with pytest.raises(TypeError):
+        del resource["hydra:view"]  # type: ignore[attr-defined]
 
     keys = list(resource)
     assert "hydra:view" not in keys

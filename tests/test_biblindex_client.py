@@ -412,7 +412,7 @@ def test_request_passes_query_params(client: BiblIndexClient) -> None:
     client.expiresIn = datetime.now() + timedelta(seconds=300)
     responses.get(RESOURCE_URL, json={})
 
-    client.request(RESOURCE_PATH, {"page": 2, "limit": 10})
+    client.request(RESOURCE_PATH, {"page": 2, "limit": 10}, validateParams=False)
 
     sent = responses.calls[0].request.url
     assert "page=2" in sent
@@ -803,7 +803,9 @@ def test_client_wrapping_helpers_cover_reference_branches(client: BiblIndexClien
         currentResource="/api/things/1",
         cache=cache,
     )
-    assert wrappedNestedSelfReference == {"place": {"@id": "/api/things/1", "name": "Current"}}
+    assert wrappedNestedSelfReference == {
+        "place": {"@id": "/api/things/1", "name": "Current", "id": 1}
+    }
 
 
 def test_wrap_linked_resource_properties_skips_hydra_keys(client: BiblIndexClient) -> None:

@@ -1,63 +1,73 @@
+"""Demonstrate the client against the live API.
+
+Reads credentials from .env.local. Run with ``make run``.
+"""
+
 import os
 
 from dotenv_flow import dotenv_flow
 
-from biblindex_client import BiblIndexClient, LazyResource
+from biblindex_client import (
+    AccessDeniedError,
+    BiblIndexClient,
+    LazyCollection,
+    PageSizeError,
+    UndeclaredParameterError,
+)
 
 dotenv_flow("local")
 
-if __name__ == "__main__":
+
+def main() -> None:
     client = BiblIndexClient(
-        os.getenv("BIBLINDEX_API_URL"),
-        os.getenv("BIBLINDEX_API_USER"),
-        os.getenv("BIBLINDEX_API_PASSWORD"),
-        os.getenv("BIBLINDEX_API_KEY"),
-        os.getenv("BIBLINDEX_API_SECRET"),
-    )
-    collection = client.request(
-        "/api/quotations",
-        {
-            "page": 1,
-        },
+        os.getenv("BIBLINDEX_API_URL", ""),
+        os.getenv("BIBLINDEX_API_USER", ""),
+        os.getenv("BIBLINDEX_API_PASSWORD", ""),
+        os.getenv("BIBLINDEX_API_KEY", ""),
+        os.getenv("BIBLINDEX_API_SECRET", ""),
     )
 
-    print(
-        f"Fetched quotation collection with {collection.loadedItems} loaded "
-        f"member link(s) out of {len(collection)} total."
-    )
+    print("== Collections ==")
+    books = client.request("/api/books", {"itemsPerPage": 100, "page": 1})
+    print(f"/api/books -> {type(books).__name__}")
+    print(f"  totalItems={len(books)} loaded={books.loadedItems} complete={books.isComplete}")
 
-    if not collection:
-        raise SystemExit
+    print("\n== Paging past the server's 100-item cap ==")
+    print(f"fetchAll -> {len(client.fetchAll('/api/books'))} items")
+    try:
+        client.request("/api/books", {"itemsPerPage": 500})
+    except PageSizeError as error:
+        print(f"itemsPerPage=500 refused: {str(error)[:70]}...")
 
-    item = collection[0]
-    print(f"First member is lazy: {isinstance(item, LazyResource)}")
+    print("\n== Declared filters ==")
+    for resource in ("/api/quotations", "/api/verses", "/api/works", "/api/books"):
+        print(f"  {resource:20s} {sorted(client.filtersFor(resource))}")
 
-    print("Reading a field on the quotation now triggers the item fetch.")
-    quotationId = item.get("@id", item.get("id", "unknown"))
-    print(f"First quotation id: {quotationId}")
+    print("\n== A filter the endpoint would silently ignore ==")
+    try:
+        client.request("/api/quotations", {"author": 42})
+    except UndeclaredParameterError as error:
+        print(f"  refused: {str(error)[:100]}...")
 
-    for linkedProperty in ("extract", "work", "works"):
-        if linkedProperty not in item:
-            continue
+    print("\n== A filter it does declare ==")
+    works = client.request("/api/works", {"author": 42, "itemsPerPage": 1, "page": 1})
+    print(f"  /api/works?author=42 -> {len(works)} works")
 
-        linkedValue = item[linkedProperty]
-        print(f"{linkedProperty} is lazy: {isinstance(linkedValue, LazyResource)}")
+    print("\n== id backfilled from the @id IRI (absent in ld+json) ==")
+    authors = client.request("/api/authors", {"itemsPerPage": 1, "page": 1})
+    if isinstance(authors, LazyCollection) and authors.loadedItems:
+        author = authors[0]
+        print(f"  @id={author['@id']!r} -> id={author['id']!r}")
 
-        if isinstance(linkedValue, list) and linkedValue:
-            firstLinkedValue = linkedValue[0]
-            print(
-                f"First {linkedProperty} item is lazy: {isinstance(firstLinkedValue, LazyResource)}"
-            )
-            print(f"Reading a field on {linkedProperty}[0] now triggers its fetch.")
-            firstLinkedValueId = firstLinkedValue.get(
-                "@id",
-                firstLinkedValue.get("id"),
-            )
-            print(f"First {linkedProperty} item id: {firstLinkedValueId}")
-            break
+    print("\n== The corpus, which needs ROLE_API_CLIENT ==")
+    try:
+        quotations = client.request("/api/quotations", {"page": 1})
+        print(f"  reachable: {len(quotations)} quotations")
+    except AccessDeniedError as error:
+        print(f"  {str(error)[:160]}...")
 
-        if isinstance(linkedValue, LazyResource):
-            print(f"Reading a field on {linkedProperty} now triggers its fetch.")
-            linkedValueId = linkedValue.get("@id", linkedValue.get("id"))
-            print(f"{linkedProperty} id: {linkedValueId}")
-            break
+    client.close()
+
+
+if __name__ == "__main__":
+    main()
