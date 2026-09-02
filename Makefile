@@ -127,4 +127,6 @@ bump-major: ## Bump version (major)
 # Usage: make release part=patch|minor|major
 release: bump-$(part) ## Cut a new release (pass part=patch|minor|major)
 	@echo "Release v$$(uv run bump-my-version show --format json | uv run python -c "import sys,json; d=json.load(sys.stdin); print(d['current_version'])") ready"
+	@git push origin HEAD
+	@git push origin "v$$(uv run bump-my-version show --format json | uv run python -c "import sys,json; d=json.load(sys.stdin); print(d['current_version'])")"
 	@echo "Tag & commit pushed. The GitHub Release workflow will build and publish."

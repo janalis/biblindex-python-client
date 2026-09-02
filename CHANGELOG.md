@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `make release` now actually pushes the bump commit and the tag. It printed
+  "Tag & commit pushed" while `bump-my-version` was configured to commit and
+  tag only, so a release looked complete and never triggered the publish
+  workflow.
+
 ## 0.3.0 — 2026-09-02
 
 Hardening release. The theme: the API has several behaviours that produce a
