@@ -85,10 +85,10 @@ class BiblIndexClient:
     def __init__(
         self,
         baseUrl: str,
-        username: str,
-        password: str,
-        clientId: str,
-        clientSecret: str,
+        username: str = "",
+        password: str = "",
+        clientId: str = "",
+        clientSecret: str = "",
         accept: str = JSON_LD_MIME_TYPE,
         timeout: float | tuple[float, float] | None = DEFAULT_TIMEOUT,
         retries: int = 0,
@@ -96,7 +96,14 @@ class BiblIndexClient:
         backfillIds: bool = True,
         maxAutoPages: int | None = DEFAULT_MAX_AUTO_PAGES,
     ) -> None:
-        """Initialize the API client with credentials and configuration."""
+        """Initialize the API client with credentials and configuration.
+
+        Credentials are optional. Omit them to read the endpoints BiblIndex
+        serves publicly (``/api/books``, ``/api/works``, ``/api/authors``,
+        ``/api/docs.jsonopenapi`` and others): no token is fetched and no
+        ``Authorization`` header is sent. A resource that does require a token
+        then answers 401, which is reported as such rather than retried.
+        """
         self.baseUrl: str = baseUrl
         self.username: str = username
         self.password: str = password
@@ -117,6 +124,10 @@ class BiblIndexClient:
 
         self._vocabulary = FilterVocabulary()
 
+        # A partial set of credentials is a configuration mistake, not a
+        # request to go anonymous, so all four must be absent to skip auth.
+        self._anonymous = not any((username, password, clientId, clientSecret))
+
         if retries > 0:
             # GET-only: token POSTs must never be blindly retried, as a retry
             # after an ambiguous failure could rotate the refresh token
@@ -131,6 +142,15 @@ class BiblIndexClient:
             adapter = HTTPAdapter(max_retries=retry)
             self.session.mount("https://", adapter)
             self.session.mount("http://", adapter)
+
+    @property
+    def isAnonymous(self) -> bool:
+        """Whether the client was built without credentials.
+
+        An anonymous client sends no ``Authorization`` header and never calls
+        the token endpoint. It can read whatever BiblIndex serves publicly.
+        """
+        return self._anonymous
 
     def close(self) -> None:
         """Close the underlying HTTP session."""
@@ -373,16 +393,17 @@ class BiblIndexClient:
         A 401 response triggers a token renewal and a single replay of the
         request; a second 401 is raised as :class:`AuthenticationError`.
         """
-        if not self.accessToken:
-            self.fetchTokens()
+        if not self.isAnonymous:
+            if not self.accessToken:
+                self.fetchTokens()
 
-        if self.expiresIn is not None and self.expiresIn < datetime.now() + timedelta(
-            seconds=TOKEN_EXPIRY_LEEWAY_SECONDS
-        ):
-            self.refreshTokens()
+            if self.expiresIn is not None and self.expiresIn < datetime.now() + timedelta(
+                seconds=TOKEN_EXPIRY_LEEWAY_SECONDS
+            ):
+                self.refreshTokens()
 
         response = self._authorizedGet(resource, params)
-        if response.status_code == 401:
+        if response.status_code == 401 and not self.isAnonymous:
             self._reauthenticate()
             response = self._authorizedGet(resource, params)
 
@@ -397,7 +418,7 @@ class BiblIndexClient:
 
         if response.status_code == 403:
             raise AccessDeniedError(
-                accessDeniedMessage(resource, response),
+                accessDeniedMessage(resource, response, anonymous=self.isAnonymous),
                 response=response,
                 request=response.request,
             )
@@ -407,9 +428,20 @@ class BiblIndexClient:
             message = f"401 Unauthorized on {resource}."
             if detail:
                 message = f"{message} Server said: {detail}"
+
+            if self.isAnonymous:
+                explanation = (
+                    "This client was built without credentials, so no token was "
+                    "sent. This resource is not public: construct the client "
+                    "with username, password, clientId and clientSecret."
+                )
+            else:
+                explanation = (
+                    "The credentials were refused, or the token was rejected twice in a row."
+                )
+
             raise AuthenticationError(
-                f"{message} The credentials were refused, or the token was "
-                f"rejected twice in a row.",
+                f"{message} {explanation}",
                 response=response,
                 request=response.request,
             )
@@ -439,15 +471,16 @@ class BiblIndexClient:
             ) from error
 
     def _authorizedGet(self, resource: str, params: Mapping[str, Any]) -> requests.Response:
-        """Issue a GET request carrying the current bearer token."""
+        """Issue a GET request, carrying the bearer token unless anonymous."""
+        headers = {"Accept": self.accept}
+        if not self.isAnonymous:
+            headers["Authorization"] = f"Bearer {self.accessToken}"
+
         return self.session.request(
             "GET",
             f"{self.baseUrl}{resource}",
             params=dict(params),
-            headers={
-                "Authorization": f"Bearer {self.accessToken}",
-                "Accept": self.accept,
-            },
+            headers=headers,
             timeout=self.timeout,
         )
 
@@ -730,6 +763,8 @@ class BiblIndexClient:
             AuthenticationError: If the token endpoint rejects the credentials.
                 Token state is left untouched on failure.
         """
+        self._requireCredentials("fetchTokens")
+
         response = self.session.post(
             f"{self.baseUrl}/api/token",
             data={
@@ -758,6 +793,8 @@ class BiblIndexClient:
             longer collides with the ``refreshToken`` attribute set after
             authentication.
         """
+        self._requireCredentials("refreshTokens")
+
         response = self.session.post(
             f"{self.baseUrl}/api/token",
             data={
@@ -770,6 +807,15 @@ class BiblIndexClient:
         )
 
         self._storeTokens(response, grant="refresh_token")
+
+    def _requireCredentials(self, operation: str) -> None:
+        """Refuse a token operation on a client that has no credentials."""
+        if self.isAnonymous:
+            raise BiblIndexError(
+                f"{operation}() needs credentials, but this client was built "
+                f"without any. Anonymous clients read only what BiblIndex "
+                f"serves publicly."
+            )
 
     def _storeTokens(self, response: requests.Response, *, grant: str) -> None:
         """Validate a token response and store the tokens it carries."""

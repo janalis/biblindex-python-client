@@ -151,6 +151,25 @@ client = BiblIndexClient(
 quotations = client.request("/api/quotations", {"page": 1})
 ```
 
+### Reading the public API without credentials
+
+BiblIndex serves a number of endpoints publicly — `/api/books`, `/api/works`,
+`/api/authors`, `/api/docs.jsonopenapi` among them. Omit the credentials to
+read those: no token is fetched and no `Authorization` header is sent.
+
+```python
+client = BiblIndexClient("https://www.biblindex.org")
+client.isAnonymous                       # True
+books = client.fetchAll("/api/books")    # 107 books, no secrets needed
+client.filtersFor("/api/verses")         # the OpenAPI document is public too
+```
+
+A resource that does need a token then answers 401 or 403, reported as such
+with the remedy named, rather than retried as though a token had expired.
+Credentials are all-or-nothing: passing any one of the four makes the client
+authenticated, since a partial set is a configuration mistake rather than a
+request to go anonymous.
+
 ### Reliability
 
 Every HTTP call uses a 30-second timeout by default; pass `timeout=` to change it (a float, a `(connect, read)` tuple, or `None` to disable). Retries are off by default — pass `retries=N` to enable transport-level retries with backoff for GET requests on transient errors (429 and 5xx responses, connection failures). Token requests are never blindly retried; instead, a 401 API response triggers an automatic token renewal (refresh grant, falling back to the password grant) and a single replay of the request.

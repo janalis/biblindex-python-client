@@ -97,13 +97,33 @@ def describeErrorBody(response: requests.Response | None) -> str | None:
     return None
 
 
-def accessDeniedMessage(resource: str, response: requests.Response | None) -> str:
+def accessDeniedMessage(
+    resource: str,
+    response: requests.Response | None,
+    *,
+    anonymous: bool = False,
+) -> str:
     """Build the message for a 403, naming the missing role when it is known."""
     parts = [f"403 Access Denied on {resource}."]
 
     description = describeErrorBody(response)
     if description:
         parts.append(f"Server said: {description}")
+
+    if anonymous:
+        # No token was sent, so nothing can be concluded about an account.
+        parts.append(
+            "This client was built without credentials, so no token was sent. "
+            "This resource is not public: construct the client with username, "
+            "password, clientId and clientSecret."
+        )
+        if resource.split("?", maxsplit=1)[0] in CORPUS_RESOURCES:
+            parts.append(
+                "Note that credentials alone may not be enough here — this "
+                "resource also requires the ROLE_API_CLIENT role on the account."
+            )
+
+        return " ".join(parts)
 
     if resource.split("?", maxsplit=1)[0] in CORPUS_RESOURCES:
         parts.append(

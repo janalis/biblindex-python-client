@@ -2,7 +2,26 @@
 
 ## Unreleased
 
+### Added
+
+- **Anonymous access.** Credentials are now optional. A client built without
+  them sends no `Authorization` header and never calls the token endpoint, so
+  the endpoints BiblIndex serves publicly — `/api/books`, `/api/works`,
+  `/api/authors`, `/api/docs.jsonopenapi` — are readable with no secrets. This
+  also makes filter validation work anonymously, since the OpenAPI document is
+  public. Purely additive: the credentialed path is unchanged, and passing any
+  one credential keeps the client authenticated.
+
+  `client.isAnonymous` reports the mode. `fetchTokens()` and `refreshTokens()`
+  refuse an anonymous client rather than posting empty credentials.
+
 ### Fixed
+
+- A 403 on an anonymous client no longer claims "the token itself is valid —
+  /api/works and /api/authors accept the same one". No token was sent, so the
+  reasoning did not hold; it now says the resource is not public and names
+  credentials as the remedy, mentioning `ROLE_API_CLIENT` only as the next
+  hurdle on the corpus endpoints.
 
 - `make release` now actually pushes the bump commit and the tag. It printed
   "Tag & commit pushed" while `bump-my-version` was configured to commit and
