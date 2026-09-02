@@ -5,6 +5,11 @@
 #   GITLAB_PUSH_TOKEN    — project/personal access token with write_repository
 #                          scope, used by the manual version-bump job to push
 #                          the bump commit and tag back (masked, protected)
+#
+# Publishing needs no variable: PyPI and TestPyPI authenticate this project as a
+# trusted publisher through OIDC. Register it on each index first (Publishing →
+# Add a new GitLab publisher) with the project path, the top-level namespace, and
+# the job names `publish_pypi` / `publish_testpypi`.
 
 stages:
   - test
@@ -130,9 +135,61 @@ release:
       - dist/*
     expire_in: 1 month
 
+# ── Release: publish to TestPyPI, then PyPI ─────────────────────────────────
+# Mirrors the GitHub release workflow: TestPyPI first, PyPI only if that
+# succeeded, so a broken distribution is caught before it reaches the index a
+# real user installs from. A version can never be re-uploaded to either index,
+# which is why the order matters and why neither job is retried.
+#
+# Authentication is trusted publishing, not a stored API token: GitLab mints a
+# short-lived OIDC token, PyPI exchanges it for a token valid for minutes. No
+# long-lived credential exists to leak, and nothing needs rotating. The audience
+# differs per index, so the two jobs cannot mint a token for each other's.
+#
+# Requires the project to be registered as a trusted publisher on each index
+# (PyPI → Publishing → Add a new GitLab publisher), naming this project path,
+# the top-level namespace, and the job name below.
+.pypi_publish:
+  extends: .uv
+  stage: release
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v/'
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends curl jq
+  script:
+    # Exchange the OIDC token for a short-lived index token. `-f` makes curl
+    # fail on an HTTP error instead of writing an error body into the token.
+    - |
+      MINTED=$(curl -sf -X POST "${MINT_URL}" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -n --arg t "$PYPI_ID_TOKEN" '{token: $t}')" | jq -er '.token')
+    - UV_PUBLISH_TOKEN="$MINTED" uv publish ${PUBLISH_ARGS}
+
+publish_testpypi:
+  extends: .pypi_publish
+  needs: ["release"]
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: testpypi
+  variables:
+    MINT_URL: "https://test.pypi.org/_/oidc/mint-token"
+    PUBLISH_ARGS: "--index testpypi"
+
+publish_pypi:
+  extends: .pypi_publish
+  # Sequential, not parallel: PyPI is only reached once TestPyPI accepted the
+  # same artefacts.
+  needs: ["release", "publish_testpypi"]
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
+  variables:
+    MINT_URL: "https://pypi.org/_/oidc/mint-token"
+    PUBLISH_ARGS: ""
+
 release_publish:
   stage: release
-  needs: ["release"]
+  needs: ["release", "publish_pypi"]
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v/'
@@ -168,6 +225,9 @@ notify_failure:
 
 notify_release:
   extends: .discord
+  # Announces the package is installable, so it waits on the publish jobs rather
+  # than on the tag alone.
+  needs: ["publish_pypi", "release_publish"]
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v/'
       when: on_success
