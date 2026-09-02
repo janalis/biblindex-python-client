@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 (unreleased — cut with `make release part=minor`)
+## 0.3.0 — 2026-09-02
 
 Hardening release. The theme: the API has several behaviours that produce a
 plausible **wrong** answer rather than an error, and a caller cannot tell the
