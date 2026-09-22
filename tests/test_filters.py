@@ -74,17 +74,25 @@ def test_pagination_only_params_skip_discovery(authed: BiblIndexClient) -> None:
 
 
 @responses.activate
-def test_locale_is_refused_with_an_explanation(
+def test_a_parameter_the_endpoint_does_not_declare_is_refused(
     authed: BiblIndexClient, openapi_paths: dict[str, list[str]]
 ) -> None:
-    """`?locale=fr` returns 200 and English; the caller must be told."""
+    """API Platform answers 200 for a parameter it ignores, so the client says so.
+
+    `locale` is the example because it used to be the trap: it was accepted and
+    ignored, and the client said as much. The API honours it now — it is
+    declared on every documented GET — so the message must not keep claiming
+    otherwise; what is left is the generic rule, against an endpoint whose
+    published vocabulary does not carry it.
+    """
     register_docs(openapi_paths)
 
     with pytest.raises(UndeclaredParameterError) as error:
         authed.request("/api/authors", {"locale": "fr"})
 
     assert "locale" in str(error.value)
-    assert "no effect" in str(error.value)
+    assert "no effect" not in str(error.value)
+    assert "validateParams=False" in str(error.value)
 
 
 @responses.activate

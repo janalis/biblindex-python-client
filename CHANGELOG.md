@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A member's own fields no longer re-fetch it.** A collection page carries
+  every member in full, but only `@id`, `@type` and `id` were read from it —
+  every other field issued a `GET` for the item. Printing one field for each of
+  thirty members cost thirty-one requests where the page had already paid for
+  all of it, and at one request per second that is half a minute of waiting for
+  data already in memory. A field the page carried is now answered from the
+  page; a field it did not, and a resource seeded from a bare IRI, still fetch
+  once. Relations keep arriving as lazy resources either way.
+
+- **The client no longer claims `?locale=` has no effect.** It did when the note
+  was written; BiblIndex has honoured it since 2026-09-06, and an unsupported
+  language is now a `400` rather than a silent fallback to English. The
+  undeclared-parameter message keeps its general rule and drops the stale
+  footnote.
+
+### Documentation
+
+- *Known API limitations* is re-verified against the live API. Four of its five
+  rows had been fixed on the server: `locale`, `id` in JSON-LD, the filters on
+  `/api/quotations`, and corpus access. What is left — the page caps, the
+  per-resource grant, the one-per-second budget — is by design, and the table
+  now says so. The rate limit is listed, which it was not.
+
+- A section on reaching a verse's quotations in one call, with the new
+  `sequences` / `sequence` filters and the sequence coordinates now served by
+  `/api/extracts` and `/api/quotations`, and the `extracts` a serialized
+  sequence carries.
+
 ## 0.4.0 — 2026-09-02
 
 ### Added
