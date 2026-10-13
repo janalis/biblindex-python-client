@@ -311,15 +311,73 @@ is refused rather than kept in memory looking like a saved change. Use
 
 #### Known API limitations
 
-Verified against the live API on 02/09/2026:
+Verified against the live API on 22/09/2026. The table dated 02/09 described an
+API that has since been fixed on four of its five rows; what remains is by
+design.
 
 | behaviour | consequence |
 |---|---|
 | `itemsPerPage` capped at 100 | always page; `fetchAll()` does it for you |
-| `?locale=` accepted and ignored | `name`/`description` are English regardless; refused by the client |
-| `id` absent in ld+json on `authors`, `work_editions`, `editions` | backfilled from the `@id` IRI (`backfillIds=False` to opt out) |
-| `/api/quotations` declares only `work` | no filter by biblical segment or author |
-| corpus endpoints need `ROLE_API_CLIENT` | 403 until the account is granted it |
+| `/api/verses` capped at 30 per page | its `correspondingVerses` cost queries per row |
+| corpus endpoints need `ROLE_API_CLIENT` **and** a per-resource grant | a role alone still answers 403 until an administrator grants the resource |
+| one request per second, per account | a burst is answered `429` with `Retry-After`; build the client with `retries=5` and it waits |
+| `abbreviation` can be an empty string | a reference the server never derived; read the `sequences` instead of trusting it |
+
+Fixed since, and no longer worked around here: `?locale=fr` now serves French
+(`Jérôme` / `Jerome`, and an unsupported language is a `400` rather than a
+silent fallback); `id` is present in JSON-LD on `authors`, `work_editions`,
+`editions` and `works`; `/api/quotations` declares `extract`, `quotedAuthor`,
+`work`, `sequence` and the sequence coordinates.
+
+#### Going from a verse to its quotations
+
+The chain used to have no middle: a verse resolved to its sequences and an
+extract to its quotations, with nothing joining the two. It is one call now.
+
+```python
+quotations = client.fetchAll(
+    "/api/quotations",
+    {
+        "bible": 8,
+        "startBook": 49,
+        "startChapter": "17",
+        "startVerse": "21",
+        "endChapter": "17",
+        "endVerse": "21",
+    },
+)
+```
+
+Pin the `end*` coordinates to the `start*` ones for a single verse: a sequence
+starting at Lk 17:21 may end at 21, 23 or 25, and without them you get every
+span that opens there. Pass `bible` and `startBook` together — the server's
+index starts with that pair, and a chapter or verse alone scans the table.
+
+Every coordinate must be matched by one and the same sequence of the extract.
+
+The intermediate hops are addressable too, and both take a repeatable form:
+
+```python
+client.fetchAll("/api/extracts", {"sequences[]": [1373948, 1137565]})
+client.request("/api/quotations", {"sequence": 1373948, "page": 1})
+```
+
+And a sequence now carries the extracts built from it, so a page of
+`/api/sequences` already answers the next question:
+
+```python
+sequences = client.request(
+    "/api/sequences",
+    {"bible": 8, "startBook": 49, "startChapter": "17", "page": 1},
+)
+for sequence in sequences:
+    print(sequence["extracts"])       # ['/api/extracts/1396826']
+```
+
+Reading a field off a member costs nothing now: the page already carried it.
+Before, only `@id`, `@type` and `id` came from the page and every other field
+re-fetched the item, so printing one field for each of thirty members cost
+thirty-one requests where the page had already paid for all of it.
 
 ## Publishing a new version
 

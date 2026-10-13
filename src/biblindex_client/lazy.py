@@ -104,6 +104,12 @@ class LazyResource(Mapping[str, Any]):
 
     Read-only on purpose: the BiblIndex API is not writable through this client,
     so an assignment that appeared to succeed would never reach the server.
+
+    A field the seed already carries is answered from the seed. A collection
+    page hands every member its own payload, so reading ``member["name"]``
+    after ``client["/api/authors"]`` costs no request at all; only a field the
+    page did not include — or a resource seeded from a bare IRI, the shape a
+    relation array has — is worth a fetch, and that fetch happens once.
     """
 
     def __init__(
@@ -152,7 +158,7 @@ class LazyResource(Mapping[str, Any]):
         if key in _PREFIXED_ENVELOPE_KEYS:
             raise KeyError(key)
 
-        if self._data is None and key in {"@id", "@type", "id"} and key in self._seed:
+        if self._data is None and key in self._seed:
             return self._seed[key]
 
         data = self._load()

@@ -163,12 +163,6 @@ def undeclaredParameterMessage(
     else:
         parts.append("This endpoint declares no filters at all.")
 
-    if "locale" in offenderList:
-        parts.append(
-            "Note: 'locale' is accepted by some BiblIndex endpoints but has no "
-            "effect — name and description are served in English regardless."
-        )
-
     parts.append("Pass validateParams=False to send it anyway.")
 
     return " ".join(parts)

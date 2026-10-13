@@ -572,6 +572,38 @@ def test_request_lazy_fetches_collection_pages_when_accessing_later_items(
 
 
 @responses.activate
+def test_collection_members_answer_from_the_page_they_came_in(
+    client: BiblIndexClient,
+) -> None:
+    """A page carries each member in full, so reading its fields costs nothing.
+
+    Before, only ``@id``/``@type``/``id`` came from the page and every other
+    field re-fetched the item — so walking 30 members and printing one field
+    each cost 31 requests where the page had already paid for all of it.
+    """
+    client.accessToken = "A"
+    client.refreshToken = "R"
+    client.expiresIn = datetime.now() + timedelta(seconds=300)
+    responses.get(
+        RESOURCE_URL,
+        json=[
+            {"id": 1229419, "number": 1229419, "extract": "/api/extracts/42"},
+            {"id": 1229420, "number": 1229420},
+        ],
+    )
+
+    result = client.request(RESOURCE_PATH, {})
+
+    assert isinstance(result, LazyCollection)
+    assert [member["number"] for member in result] == [1229419, 1229420]
+    assert len(responses.calls) == 1
+
+    # A relation is still an IRI on the page, so it stays lazy.
+    assert isinstance(result[0]["extract"], LazyResource)
+    assert len(responses.calls) == 1
+
+
+@responses.activate
 def test_request_lazy_fetches_collection_members_from_item_ids(
     client: BiblIndexClient,
 ) -> None:

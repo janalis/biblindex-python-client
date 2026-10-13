@@ -656,7 +656,15 @@ class BiblIndexClient:
             return cache[resource]
 
         if seed is not None:
-            seed = self._withBackfilledId(dict(seed), resource)
+            # Wrapped like a loaded body, because the seed is now read like one:
+            # a relation arrives as an IRI string and has to become a lazy
+            # resource here, or reading it off the page would hand back the
+            # string where a fetch handed back a resource.
+            seed = self._wrapLinkedResources(
+                self._withBackfilledId(dict(seed), resource),
+                currentResource=resource,
+                cache=cache,
+            )
 
         lazyResource = LazyResource(self, resource, cache, seed)
         cache[resource] = lazyResource
