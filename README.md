@@ -151,6 +151,16 @@ client = BiblIndexClient(
 quotations = client.request("/api/quotations", {"page": 1})
 ```
 
+### Credentials
+
+Endpoints that need a token take four values, all from your BiblIndex account:
+
+- `username` and `password`: the account you sign in with (the username or the e-mail address, and its password).
+- `clientId`: the **Client ID** in the *API access* section of your profile (`https://www.biblindex.org/en/profile`), a 32-character value starting with `cl`. It is not your username or e-mail address. If that section only says a request is pending, your credentials have not been issued yet.
+- `clientSecret`: the secret shown once, when the credentials are issued or regenerated. If it is lost, *Regenerate secret* on the profile page issues a new one, and the old one stops working.
+
+The client gets its token with the OAuth2 password grant (`grant_type=password`), the grant BiblIndex API clients are authorised for; the `client_credentials` grant is not enabled for them. In `.env.example`, `BIBLINDEX_API_KEY` is the Client ID and `BIBLINDEX_API_SECRET` the secret.
+
 ### Reading the public API without credentials
 
 BiblIndex serves a number of endpoints publicly — `/api/books`, `/api/works`,
